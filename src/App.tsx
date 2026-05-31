@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { format, addDays, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Utensils, BarChart2, CalendarDays, Settings as SettingsIcon, ClipboardList } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Utensils, BarChart2, CalendarDays, Settings as SettingsIcon, ClipboardList, Leaf } from 'lucide-react';
 import { AppData } from './types';
 import { loadData, saveData, getDayLog, setDayLog } from './store';
 import TodayTab from './components/TodayTab';
@@ -56,7 +56,10 @@ export default function App() {
         <div className="bg-white shadow-sm sticky top-0 z-40">
           <div className="px-4 pt-3 pb-2">
             <div className="flex items-center justify-between mb-2">
-              <h1 className="text-lg font-bold text-gray-900">🥗 Diet Log</h1>
+              <div className="flex items-center gap-1.5">
+                <Leaf size={20} className="text-[#3b6ef5]" />
+                <h1 className="text-lg font-bold text-gray-900">Diet Log</h1>
+              </div>
               <button
                 onClick={toggleEatingOut}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-sm font-medium transition-colors ${

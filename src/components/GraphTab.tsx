@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { format, subDays, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Flame } from 'lucide-react';
 import { AppData } from '../types';
 import { getDayLog } from '../store';
 
@@ -146,7 +146,7 @@ export default function GraphTab({ data, dateKey }: Props) {
     <div className="space-y-4">
       {/* Streak */}
       <div className="card flex items-center gap-3">
-        <div className="text-3xl">🔥</div>
+        <Flame size={28} className="text-orange-500 flex-shrink-0" />
         <div className="flex items-baseline gap-1">
           <span className="num text-3xl font-bold text-gray-900">{streak}</span>
           <span className="text-sm text-gray-500">日連続記録中</span>

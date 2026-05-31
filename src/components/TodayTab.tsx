@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Pencil } from 'lucide-react';
+import { X, Pencil, Dumbbell, Activity, Footprints, Moon, Droplets, Store, Utensils } from 'lucide-react';
 import { AppData, DayLog, MealEntry, ExerciseEntry } from '../types';
 import { getDayLog, setDayLog, calcBMI } from '../store';
 import BottomSheet from './BottomSheet';
@@ -194,7 +194,10 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
           ) : !todayMenu ? (
             <div className="text-sm text-gray-400">本日の記録なし</div>
           ) : todayMenu.rest ? (
-            <div className="text-base">😴 休養日</div>
+            <div className="flex items-center gap-1.5 text-indigo-400">
+              <Moon size={16} />
+              <span className="text-sm font-medium text-gray-600">休養日</span>
+            </div>
           ) : (
             <div>
               {/* Progress badge */}
@@ -320,7 +323,9 @@ function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
           <div className="space-y-2">
             {log.meals.map(m => (
               <div key={m.id} className="card flex items-center gap-3">
-                <span className="text-2xl">🍽️</span>
+                <div className="w-9 h-9 flex items-center justify-center bg-orange-50 rounded-xl flex-shrink-0">
+                  <Utensils size={16} className="text-orange-400" />
+                </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800">{m.name}</div>
                   <div className="text-xs text-gray-400">P {m.p}g・F {m.f}g・C {m.c}g</div>
@@ -411,10 +416,12 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
     onDataChange(setDayLog(data, dateKey, { ...log, exercises: log.exercises.filter(e => e.id !== id) }));
   };
 
-  const icon = (ex: ExerciseEntry) => {
-    if (ex.type === 'gym' && ex.subType === 'cardio') return '🏃';
-    if (ex.type === 'gym' && ex.subType === 'strength') return '🏋️';
-    return '🚶';
+  const ExerciseIcon = ({ ex }: { ex: ExerciseEntry }) => {
+    if (ex.type === 'gym' && ex.subType === 'cardio')
+      return <div className="w-9 h-9 flex items-center justify-center bg-blue-50 rounded-xl flex-shrink-0"><Activity size={16} className="text-[#3b6ef5]" /></div>;
+    if (ex.type === 'gym' && ex.subType === 'strength')
+      return <div className="w-9 h-9 flex items-center justify-center bg-blue-50 rounded-xl flex-shrink-0"><Dumbbell size={16} className="text-[#3b6ef5]" /></div>;
+    return <div className="w-9 h-9 flex items-center justify-center bg-gray-100 rounded-xl flex-shrink-0"><Footprints size={16} className="text-gray-500" /></div>;
   };
 
   const subLabel = (ex: ExerciseEntry) => {
@@ -442,7 +449,7 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
           <div className="space-y-2">
             {log.exercises.map(ex => (
               <div key={ex.id} className="card flex items-center gap-3">
-                <span className="text-2xl">{icon(ex)}</span>
+                <ExerciseIcon ex={ex} />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800">{ex.name}{ex.part ? ` (${ex.part})` : ''}</div>
                   {subLabel(ex) && <div className="text-xs text-gray-400">{subLabel(ex)}</div>}
@@ -466,8 +473,8 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
             <label className="text-sm text-gray-600 block mb-1.5">種別</label>
             <div className="flex gap-2">
               {(['gym', 'other'] as const).map(t => (
-                <button key={t} onClick={() => setType(t)} className={`flex-1 py-2 rounded-xl border text-sm font-medium ${type === t ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>
-                  {t === 'gym' ? '🏋️ ジム' : '🚶 その他'}
+                <button key={t} onClick={() => setType(t)} className={`flex-1 py-2 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ${type === t ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>
+                  {t === 'gym' ? <><Dumbbell size={14} /> ジム</> : <><Footprints size={14} /> その他</>}
                 </button>
               ))}
             </div>
@@ -478,8 +485,8 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
             <div>
               <label className="text-sm text-gray-600 block mb-1.5">トレーニング種類</label>
               <div className="flex gap-2">
-                <button onClick={() => setSubType('strength')} className={`flex-1 py-2 rounded-xl border text-sm font-medium ${subType === 'strength' ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>💪 筋トレ</button>
-                <button onClick={() => setSubType('cardio')} className={`flex-1 py-2 rounded-xl border text-sm font-medium ${subType === 'cardio' ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>🏃 有酸素</button>
+                <button onClick={() => setSubType('strength')} className={`flex-1 py-2 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ${subType === 'strength' ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}><Dumbbell size={14} /> 筋トレ</button>
+                <button onClick={() => setSubType('cardio')} className={`flex-1 py-2 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ${subType === 'cardio' ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}><Activity size={14} /> 有酸素</button>
               </div>
             </div>
           )}
@@ -606,11 +613,17 @@ function HealthSection({ log, dateKey, data, onDataChange }: { log: DayLog; date
         <div className="text-sm font-semibold text-gray-700 mb-2">体調記録</div>
         <div className="grid grid-cols-2 gap-2">
           <button onClick={() => { setSleepVal(log.sleep ?? ''); setSleepOpen(true); }} className="card text-left active:bg-gray-50">
-            <div className="text-base mb-1">😴 睡眠</div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Moon size={15} className="text-indigo-400" />
+              <span className="text-sm font-medium text-gray-700">睡眠</span>
+            </div>
             <div className="text-sm text-gray-500">{log.sleep ?? 'タップして記録'}</div>
           </button>
           <button onClick={() => { setBowelVal(log.bowel ?? ''); setBowelOpen(true); }} className="card text-left active:bg-gray-50">
-            <div className="text-base mb-1">🚽 排便</div>
+            <div className="flex items-center gap-1.5 mb-1">
+              <Droplets size={15} className="text-blue-400" />
+              <span className="text-sm font-medium text-gray-700">排便</span>
+            </div>
             <div className="text-sm text-gray-500">{log.bowel ?? 'タップして記録'}</div>
           </button>
         </div>
@@ -676,7 +689,7 @@ export default function TodayTab({ dateKey, data, onDataChange }: Props) {
       {log.eatingOut ? (
         <div className="card mb-3 bg-amber-50 border-amber-200">
           <div className="flex items-center gap-2">
-            <span className="text-xl">🍜</span>
+            <Store size={20} className="text-amber-600 flex-shrink-0" />
             <div>
               <div className="text-sm font-semibold text-amber-800">外食モード</div>
               <div className="text-xs text-amber-600">本日のカロリー・PFC集計は非表示です</div>

@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, Moon, Droplets } from 'lucide-react';
 import { format, startOfWeek, addWeeks, addDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
@@ -136,7 +136,7 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
             </thead>
             <tbody>
               <tr>
-                <td className="text-xs text-gray-400 pr-2">😴</td>
+                <td className="pr-2"><Moon size={13} className="text-indigo-400" /></td>
                 {days.map(d => (
                   <td key={d.dow} className="py-1">
                     <span className={`text-xs ${d.log.sleep ? 'text-gray-700' : 'text-gray-300'}`}>{d.log.sleep ?? '—'}</span>
@@ -144,7 +144,7 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
                 ))}
               </tr>
               <tr>
-                <td className="text-xs text-gray-400 pr-2">🚽</td>
+                <td className="pr-2"><Droplets size={13} className="text-blue-400" /></td>
                 {days.map(d => (
                   <td key={d.dow} className="py-1">
                     <span className={`text-xs ${d.log.bowel ? 'text-gray-700' : 'text-gray-300'}`}>{d.log.bowel ?? '—'}</span>
