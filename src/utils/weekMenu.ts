@@ -1,82 +1,62 @@
-export type Exercise = {
+export type TrainingItem = {
   name: string;
   sets: string;
+  point: string;
+};
+
+export type CardioItem = {
+  name: string;
+  duration: number;
   note: string;
 };
 
-export type CardioEntry = {
-  name: string;
-  duration: string;
-  detail: string;
-};
-
-export type DayMenu = {
+export type DayMenuJSON = {
+  date: string;   // "M/D" 形式 例: "6/1"
   rest: boolean;
-  strength: Exercise[];
-  cardio: CardioEntry[];
+  training: TrainingItem[];
+  cardio: CardioItem[];
 };
 
-export type WeekMenuParsed = Record<string, DayMenu>; // key: "YYYY-MM-DD"
+export type WeekMenuJSON = {
+  week: DayMenuJSON[];
+};
 
-function parseDate(line: string, year: number): string | null {
-  // Matches patterns like "6/1 月", "6/1月", "6/1"
-  const m = line.match(/^(\d{1,2})\/(\d{1,2})/);
-  if (!m) return null;
-  const month = parseInt(m[1], 10);
-  const day = parseInt(m[2], 10);
-  const d = new Date(year, month - 1, day);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
-
-export function parseWeekMenu(text: string, referenceYear = new Date().getFullYear()): WeekMenuParsed {
-  const result: WeekMenuParsed = {};
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-
-  let currentDate: string | null = null;
-  let currentSection: 'strength' | 'cardio' | null = null;
-
-  for (const line of lines) {
-    const date = parseDate(line, referenceYear);
-    if (date) {
-      currentDate = date;
-      currentSection = null;
-      result[currentDate] = { rest: false, strength: [], cardio: [] };
-      continue;
-    }
-
-    if (!currentDate) continue;
-
-    if (line.includes('休養日')) {
-      result[currentDate].rest = true;
-      continue;
-    }
-
-    if (line === '【筋トレ】') {
-      currentSection = 'strength';
-      continue;
-    }
-    if (line === '【有酸素】') {
-      currentSection = 'cardio';
-      continue;
-    }
-
-    if (currentSection === 'strength') {
-      // Split by full-width space or tab: name　sets　note
-      const parts = line.split(/[　\t]/).map(p => p.trim()).filter(Boolean);
-      result[currentDate].strength.push({
-        name: parts[0] ?? '',
-        sets: parts[1] ?? '',
-        note: parts[2] ?? '',
-      });
-    } else if (currentSection === 'cardio') {
-      const parts = line.split(/[　\t]/).map(p => p.trim()).filter(Boolean);
-      result[currentDate].cardio.push({
-        name: parts[0] ?? '',
-        duration: parts[1] ?? '',
-        detail: parts[2] ?? '',
-      });
-    }
+/** テキストをJSONとしてパース。不正な場合は null を返す */
+export function parseWeekMenuJSON(text: string): WeekMenuJSON | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (!parsed || !Array.isArray(parsed.week)) return null;
+    return parsed as WeekMenuJSON;
+  } catch {
+    return null;
   }
-
-  return result;
 }
+
+/** dateKey (YYYY-MM-DD) に対応するその日のメニューを取得 */
+export function getDayMenuFromJSON(parsed: WeekMenuJSON, dateKey: string): DayMenuJSON | null {
+  const d = new Date(dateKey + 'T00:00:00');
+  const monthDay = `${d.getMonth() + 1}/${d.getDate()}`;
+  return parsed.week.find(day => day.date === monthDay) ?? null;
+}
+
+/** 入力フォーム用のプレースホルダーJSON */
+export const WEEK_MENU_PLACEHOLDER = `{
+  "week": [
+    {
+      "date": "6/1",
+      "rest": false,
+      "training": [
+        { "name": "ベンチプレス", "sets": "10×5", "point": "肩甲骨を寄せる" }
+      ],
+      "cardio": [
+        { "name": "トレッドミル", "duration": 20, "note": "傾斜2・速度7" }
+      ]
+    },
+    {
+      "date": "6/2",
+      "rest": true,
+      "training": [],
+      "cardio": []
+    }
+  ]
+}`;

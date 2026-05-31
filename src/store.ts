@@ -26,16 +26,17 @@ const defaultDayLog = (): DayLog => ({
 export function loadData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { logs: {}, weekMenus: {}, weekMemos: {}, settings: defaultSettings };
+    if (!raw) return { logs: {}, weekMenus: {}, weekMemos: {}, menuChecks: {}, settings: defaultSettings };
     const parsed = JSON.parse(raw) as Partial<AppData>;
     return {
       logs: parsed.logs ?? {},
       weekMenus: parsed.weekMenus ?? {},
       weekMemos: parsed.weekMemos ?? {},
+      menuChecks: parsed.menuChecks ?? {},
       settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
     };
   } catch {
-    return { logs: {}, weekMenus: {}, weekMemos: {}, settings: defaultSettings };
+    return { logs: {}, weekMenus: {}, weekMemos: {}, menuChecks: {}, settings: defaultSettings };
   }
 }
 
@@ -52,7 +53,6 @@ export function setDayLog(data: AppData, dateKey: string, log: DayLog): AppData 
 }
 
 export function calcBMR(s: Settings, weight: number): number {
-  // Mifflin-St Jeor
   if (s.gender === 'male') {
     return Math.round(10 * weight + 6.25 * s.height - 5 * s.age + 5);
   }

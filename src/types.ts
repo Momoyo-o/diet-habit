@@ -10,8 +10,14 @@ export type MealEntry = {
 export type ExerciseEntry = {
   id: number;
   type: 'gym' | 'other';
+  subType: 'strength' | 'cardio' | '';
+  part: string;
   name: string;
-  duration: number;
+  startTime: string | null;
+  weight: number | null;
+  reps: number | null;
+  sets: number | null;
+  duration: number | null;
   burnCal: number;
   memo: string;
 };
@@ -41,5 +47,6 @@ export type AppData = {
   logs: Record<string, DayLog>;
   weekMenus: Record<string, string>;
   weekMemos: Record<string, string>;
+  menuChecks: Record<string, Record<string, boolean>>;
   settings: Settings;
 };

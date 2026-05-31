@@ -3,7 +3,7 @@ import { X, Pencil } from 'lucide-react';
 import { AppData, DayLog, MealEntry, ExerciseEntry } from '../types';
 import { getDayLog, setDayLog, calcBMI } from '../store';
 import BottomSheet from './BottomSheet';
-import { parseWeekMenu } from '../utils/weekMenu';
+import { parseWeekMenuJSON, getDayMenuFromJSON, WEEK_MENU_PLACEHOLDER } from '../utils/weekMenu';
 
 type Props = {
   dateKey: string;
@@ -11,7 +11,7 @@ type Props = {
   onDataChange: (d: AppData) => void;
 };
 
-// ---- Calorie Summary Card ----
+// ─── Calorie Summary ─────────────────────────────────────────────────────────
 function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['settings'] }) {
   const totalCal = log.meals.reduce((s, m) => s + m.cal, 0);
   const burnCal = log.exercises.reduce((s, e) => s + e.burnCal, 0);
@@ -19,7 +19,6 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
   const remaining = settings.targetCal - netCal;
   const pct = Math.min((netCal / settings.targetCal) * 100, 100);
   const over = netCal > settings.targetCal;
-
   const totalP = log.meals.reduce((s, m) => s + m.p, 0);
   const totalF = log.meals.reduce((s, m) => s + m.f, 0);
   const totalC = log.meals.reduce((s, m) => s + m.c, 0);
@@ -40,10 +39,7 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
         </div>
       </div>
       <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
-        <div
-          className={`h-full rounded-full transition-all ${over ? 'bg-red-400' : 'bg-[#3b6ef5]'}`}
-          style={{ width: `${pct}%` }}
-        />
+        <div className={`h-full rounded-full transition-all ${over ? 'bg-red-400' : 'bg-[#3b6ef5]'}`} style={{ width: `${pct}%` }} />
       </div>
       <div className="grid grid-cols-3 gap-2">
         {[
@@ -59,10 +55,7 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
             </div>
             <div className="text-xs text-gray-400 mb-1">{label} /{target}g</div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div
-                className={`h-full ${color} rounded-full`}
-                style={{ width: `${Math.min((val / target) * 100, 100)}%` }}
-              />
+              <div className={`h-full ${color} rounded-full`} style={{ width: `${Math.min((val / target) * 100, 100)}%` }} />
             </div>
           </div>
         ))}
@@ -71,11 +64,11 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
   );
 }
 
-// ---- Body Card ----
+// ─── Body Card ────────────────────────────────────────────────────────────────
 function BodyCard({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
   const [open, setOpen] = useState(false);
-  const [weight, setWeight] = useState(log.body?.weight?.toString() ?? '');
-  const [bodyfat, setBodyfat] = useState(log.body?.bodyfat?.toString() ?? '');
+  const [weight, setWeight] = useState('');
+  const [bodyfat, setBodyfat] = useState('');
 
   const prevDateKey = (() => {
     const d = new Date(dateKey);
@@ -83,16 +76,13 @@ function BodyCard({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: 
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })();
   const prevLog = getDayLog(data, prevDateKey);
-
   const bmi = log.body ? calcBMI(log.body.weight, data.settings.height) : null;
   const diff = log.body && prevLog.body ? Math.round((log.body.weight - prevLog.body.weight) * 10) / 10 : null;
 
   const save = () => {
     const w = parseFloat(weight);
     if (isNaN(w)) return;
-    const bf = bodyfat ? parseFloat(bodyfat) : null;
-    const updated = setDayLog(data, dateKey, { ...log, body: { weight: w, bodyfat: bf } });
-    onDataChange(updated);
+    onDataChange(setDayLog(data, dateKey, { ...log, body: { weight: w, bodyfat: bodyfat ? parseFloat(bodyfat) : null } }));
     setOpen(false);
   };
 
@@ -101,11 +91,7 @@ function BodyCard({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: 
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">体重・体脂肪</span>
-          <button className="btn-primary text-xs py-1 px-3" onClick={() => {
-            setWeight(log.body?.weight?.toString() ?? '');
-            setBodyfat(log.body?.bodyfat?.toString() ?? '');
-            setOpen(true);
-          }}>＋ 記録</button>
+          <button className="btn-primary text-xs py-1 px-3" onClick={() => { setWeight(log.body?.weight?.toString() ?? ''); setBodyfat(log.body?.bodyfat?.toString() ?? ''); setOpen(true); }}>＋ 記録</button>
         </div>
         <div className="card">
           <div className="grid grid-cols-3 gap-3">
@@ -135,30 +121,15 @@ function BodyCard({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: 
           </div>
         </div>
       </div>
-
       <BottomSheet open={open} onClose={() => setOpen(false)} title="体重・体脂肪を記録">
         <div className="space-y-4">
           <div>
             <label className="text-sm text-gray-600 block mb-1">体重 (kg)</label>
-            <input
-              type="number"
-              step="0.1"
-              value={weight}
-              onChange={e => setWeight(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
-              placeholder="例: 65.5"
-            />
+            <input type="number" step="0.1" value={weight} onChange={e => setWeight(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 65.5" />
           </div>
           <div>
             <label className="text-sm text-gray-600 block mb-1">体脂肪率 (%) — 任意</label>
-            <input
-              type="number"
-              step="0.1"
-              value={bodyfat}
-              onChange={e => setBodyfat(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
-              placeholder="例: 18.5"
-            />
+            <input type="number" step="0.1" value={bodyfat} onChange={e => setBodyfat(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 18.5" />
           </div>
           <button onClick={save} className="btn-primary w-full py-3">保存</button>
         </div>
@@ -167,7 +138,7 @@ function BodyCard({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: 
   );
 }
 
-// ---- Week Menu Card ----
+// ─── Week Menu Card (JSON + Checklist) ───────────────────────────────────────
 function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
   const [open, setOpen] = useState(false);
   const [menuText, setMenuText] = useState('');
@@ -181,12 +152,27 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
   })();
 
   const rawMenu = data.weekMenus[mondayKey];
-  const parsed = rawMenu ? parseWeekMenu(rawMenu) : null;
-  const todayMenu = parsed?.[dateKey];
+  const parsed = rawMenu ? parseWeekMenuJSON(rawMenu) : null;
+  const todayMenu = parsed ? getDayMenuFromJSON(parsed, dateKey) : null;
+  const checks = data.menuChecks[dateKey] ?? {};
+
+  const totalItems = todayMenu ? todayMenu.training.length + todayMenu.cardio.length : 0;
+  const doneItems = Object.values(checks).filter(Boolean).length;
+
+  const toggleCheck = (key: string) => {
+    const dayChecks = { ...checks, [key]: !checks[key] };
+    onDataChange({ ...data, menuChecks: { ...data.menuChecks, [dateKey]: dayChecks } });
+  };
 
   const saveMenu = () => {
-    const updated = { ...data, weekMenus: { ...data.weekMenus, [mondayKey]: menuText } };
-    onDataChange(updated);
+    if (menuText.trim()) {
+      const result = parseWeekMenuJSON(menuText);
+      if (!result) {
+        alert('JSONの形式が正しくありません。入力内容を確認してください。');
+        return;
+      }
+    }
+    onDataChange({ ...data, weekMenus: { ...data.weekMenus, [mondayKey]: menuText } });
     setOpen(false);
   };
 
@@ -195,10 +181,9 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">今日の運動メニュー</span>
-          <button
-            className="bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-1 text-sm font-medium active:bg-gray-50"
-            onClick={() => { setMenuText(rawMenu ?? ''); setOpen(true); }}
-          >週メニュー入力</button>
+          <button className="bg-white border border-gray-200 text-gray-700 rounded-xl px-3 py-1 text-sm font-medium active:bg-gray-50" onClick={() => { setMenuText(rawMenu ?? ''); setOpen(true); }}>
+            週メニュー入力
+          </button>
         </div>
         <div className="card min-h-[64px]">
           {!rawMenu ? (
@@ -211,49 +196,79 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
           ) : todayMenu.rest ? (
             <div className="text-base">😴 休養日</div>
           ) : (
-            <div className="space-y-3">
-              {todayMenu.strength.length > 0 && (
-                <div>
-                  <div className="text-xs font-semibold text-gray-500 mb-1">【筋トレ】</div>
-                  <div className="space-y-1">
-                    {todayMenu.strength.map((ex, i) => (
-                      <div key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                        <span className="font-medium">{ex.name}</span>
-                        {ex.sets && <span className="text-gray-400">{ex.sets}</span>}
-                        {ex.note && <span className="text-gray-400 text-xs">{ex.note}</span>}
-                      </div>
-                    ))}
-                  </div>
+            <div>
+              {/* Progress badge */}
+              {totalItems > 0 && (
+                <div className="flex justify-end mb-2">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${doneItems === totalItems ? 'bg-[#12b76a] text-white' : 'bg-gray-100 text-gray-500'}`}>
+                    {doneItems}/{totalItems} 完了
+                  </span>
                 </div>
               )}
-              {todayMenu.cardio.length > 0 && (
-                <div>
-                  <div className="text-xs font-semibold text-gray-500 mb-1">【有酸素】</div>
-                  <div className="space-y-1">
-                    {todayMenu.cardio.map((c, i) => (
-                      <div key={i} className="flex items-start gap-2 text-sm text-gray-700">
-                        <span className="font-medium">{c.name}</span>
-                        {c.duration && <span className="text-gray-400">{c.duration}</span>}
-                        {c.detail && <span className="text-gray-400 text-xs">{c.detail}</span>}
-                      </div>
-                    ))}
+              <div className="space-y-3">
+                {todayMenu.training.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-gray-500 mb-1">【筋トレ】</div>
+                    <div className="space-y-1.5">
+                      {todayMenu.training.map((ex, i) => {
+                        const ck = `t_${i}`;
+                        const done = !!checks[ck];
+                        return (
+                          <button key={i} onClick={() => toggleCheck(ck)} className="w-full flex items-start gap-2 text-left py-1 px-2 rounded-lg active:bg-gray-50">
+                            <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300'}`}>
+                              {done && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            </span>
+                            <div className={done ? 'line-through opacity-40' : ''}>
+                              <span className="text-sm font-medium text-gray-800">{ex.name}</span>
+                              {ex.sets && <span className="text-xs text-gray-400 ml-1.5">{ex.sets}</span>}
+                              {ex.point && <span className="text-xs text-gray-400 ml-1.5">{ex.point}</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+                {todayMenu.cardio.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-gray-500 mb-1">【有酸素】</div>
+                    <div className="space-y-1.5">
+                      {todayMenu.cardio.map((c, i) => {
+                        const ck = `c_${i}`;
+                        const done = !!checks[ck];
+                        return (
+                          <button key={i} onClick={() => toggleCheck(ck)} className="w-full flex items-start gap-2 text-left py-1 px-2 rounded-lg active:bg-gray-50">
+                            <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300'}`}>
+                              {done && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                            </span>
+                            <div className={done ? 'line-through opacity-40' : ''}>
+                              <span className="text-sm font-medium text-gray-800">{c.name}</span>
+                              {c.duration > 0 && <span className="text-xs text-gray-400 ml-1.5">{c.duration}分</span>}
+                              {c.note && <span className="text-xs text-gray-400 ml-1.5">{c.note}</span>}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
       </div>
 
-      <BottomSheet open={open} onClose={() => setOpen(false)} title="週メニューを入力">
+      <BottomSheet open={open} onClose={() => setOpen(false)} title="週メニューを入力 (JSON)">
         <div className="space-y-3">
-          <p className="text-xs text-gray-500">Claudeが出力したテキストをそのまま貼り付けてください</p>
+          <p className="text-xs text-gray-500">
+            ClaudeにJSON形式で週メニューを出力してもらい、そのまま貼り付けてください。
+          </p>
           <textarea
             value={menuText}
             onChange={e => setMenuText(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5] font-mono"
-            rows={14}
-            placeholder={`例:\n6/1 月\n【筋トレ】\nベンチプレス　10×5　肩甲骨を寄せる\n【有酸素】\nトレッドミル　20分　傾斜2・速度7\n6/2 火\n休養日`}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-[#3b6ef5] font-mono"
+            rows={16}
+            placeholder={WEEK_MENU_PLACEHOLDER}
           />
           <button onClick={saveMenu} className="btn-primary w-full py-3">保存</button>
         </div>
@@ -262,19 +277,19 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
   );
 }
 
-// ---- Meal Section ----
+// ─── Meal Section ─────────────────────────────────────────────────────────────
+const MEAL_TYPES = ['朝食', '昼食', '夕食', '間食', '1日トータル', 'その他'];
+
 function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
+  const [name, setName] = useState(MEAL_TYPES[0]);
   const [cal, setCal] = useState('');
   const [p, setP] = useState('');
   const [f, setF] = useState('');
   const [c, setC] = useState('');
 
-  const presets = ['朝食', '昼食', '夕食', '間食'];
-
   const add = () => {
-    if (!name || !cal) return;
+    if (!cal) return;
     const entry: MealEntry = {
       id: Date.now(),
       name,
@@ -283,15 +298,13 @@ function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
       f: parseFloat(f) || 0,
       c: parseFloat(c) || 0,
     };
-    const updated = setDayLog(data, dateKey, { ...log, meals: [...log.meals, entry] });
-    onDataChange(updated);
+    onDataChange(setDayLog(data, dateKey, { ...log, meals: [...log.meals, entry] }));
     setOpen(false);
-    setName(''); setCal(''); setP(''); setF(''); setC('');
+    setName(MEAL_TYPES[0]); setCal(''); setP(''); setF(''); setC('');
   };
 
   const remove = (id: number) => {
-    const updated = setDayLog(data, dateKey, { ...log, meals: log.meals.filter(m => m.id !== id) });
-    onDataChange(updated);
+    onDataChange(setDayLog(data, dateKey, { ...log, meals: log.meals.filter(m => m.id !== id) }));
   };
 
   return (
@@ -312,7 +325,7 @@ function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
                   <div className="text-sm font-medium text-gray-800">{m.name}</div>
                   <div className="text-xs text-gray-400">P {m.p}g・F {m.f}g・C {m.c}g</div>
                 </div>
-                <div className="text-right flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <span className="num text-sm font-semibold text-[#3b6ef5]">{m.cal} kcal</span>
                   <button onClick={() => remove(m.id)} className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200">
                     <X size={14} className="text-gray-500" />
@@ -327,30 +340,17 @@ function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
       <BottomSheet open={open} onClose={() => setOpen(false)} title="食事を追加">
         <div className="space-y-4">
           <div>
-            <label className="text-sm text-gray-600 block mb-1.5">食事名</label>
-            <div className="flex gap-2 mb-2 flex-wrap">
-              {presets.map(p => (
-                <button key={p} onClick={() => setName(p)} className={`px-3 py-1 rounded-full text-sm border ${name === p ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>{p}</button>
-              ))}
-            </div>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
-              placeholder="または直接入力"
-            />
+            <label className="text-sm text-gray-600 block mb-1">食事タイプ</label>
+            <select value={name} onChange={e => setName(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]">
+              {MEAL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
           </div>
           <div>
             <label className="text-sm text-gray-600 block mb-1">カロリー (kcal)</label>
             <input type="number" value={cal} onChange={e => setCal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 650" />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {[
-              { label: 'タンパク質 P (g)', val: p, set: setP },
-              { label: '脂質 F (g)', val: f, set: setF },
-              { label: '炭水化物 C (g)', val: c, set: setC },
-            ].map(({ label, val, set }) => (
+            {[{ label: 'P (g)', val: p, set: setP }, { label: 'F (g)', val: f, set: setF }, { label: 'C (g)', val: c, set: setC }].map(({ label, val, set }) => (
               <div key={label}>
                 <label className="text-xs text-gray-500 block mb-1">{label}</label>
                 <input type="number" step="0.1" value={val} onChange={e => set(e.target.value)} className="w-full border border-gray-200 rounded-xl px-2 py-2 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="0" />
@@ -364,34 +364,69 @@ function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
   );
 }
 
-// ---- Exercise Section ----
+// ─── Exercise Section ─────────────────────────────────────────────────────────
+const BODY_PARTS = ['胸', '背中', '脚', '肩', '腕', '腹', '全身'];
+
 function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<'gym' | 'other'>('gym');
+  const [subType, setSubType] = useState<'strength' | 'cardio'>('strength');
+  const [part, setPart] = useState('胸');
   const [name, setName] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [weight, setWeight] = useState('');
+  const [reps, setReps] = useState('');
+  const [sets, setSets] = useState('');
   const [duration, setDuration] = useState('');
   const [burnCal, setBurnCal] = useState('');
   const [memo, setMemo] = useState('');
+
+  const reset = () => {
+    setName(''); setStartTime(''); setWeight(''); setReps(''); setSets('');
+    setDuration(''); setBurnCal(''); setMemo(''); setPart('胸');
+  };
 
   const add = () => {
     if (!name) return;
     const entry: ExerciseEntry = {
       id: Date.now(),
       type,
+      subType: type === 'gym' ? subType : '',
+      part: type === 'gym' && subType === 'strength' ? part : '',
       name,
-      duration: parseInt(duration) || 0,
+      startTime: startTime || null,
+      weight: weight ? parseFloat(weight) : null,
+      reps: reps ? parseInt(reps) : null,
+      sets: sets ? parseInt(sets) : null,
+      duration: duration ? parseInt(duration) : null,
       burnCal: parseInt(burnCal) || 0,
       memo,
     };
-    const updated = setDayLog(data, dateKey, { ...log, exercises: [...log.exercises, entry] });
-    onDataChange(updated);
+    onDataChange(setDayLog(data, dateKey, { ...log, exercises: [...log.exercises, entry] }));
     setOpen(false);
-    setName(''); setDuration(''); setBurnCal(''); setMemo('');
+    reset();
   };
 
   const remove = (id: number) => {
-    const updated = setDayLog(data, dateKey, { ...log, exercises: log.exercises.filter(e => e.id !== id) });
-    onDataChange(updated);
+    onDataChange(setDayLog(data, dateKey, { ...log, exercises: log.exercises.filter(e => e.id !== id) }));
+  };
+
+  const icon = (ex: ExerciseEntry) => {
+    if (ex.type === 'gym' && ex.subType === 'cardio') return '🏃';
+    if (ex.type === 'gym' && ex.subType === 'strength') return '🏋️';
+    return '🚶';
+  };
+
+  const subLabel = (ex: ExerciseEntry) => {
+    const parts: string[] = [];
+    if (ex.startTime) parts.push(`${ex.startTime}〜`);
+    if (ex.subType === 'strength') {
+      const detail = [ex.weight ? `${ex.weight}kg` : null, ex.reps ? `${ex.reps}回` : null, ex.sets ? `${ex.sets}セット` : null].filter(Boolean).join(' × ');
+      if (detail) parts.push(detail);
+    }
+    if (ex.duration) parts.push(`${ex.duration}分`);
+    if (ex.memo) parts.push(ex.memo);
+    return parts.join('・');
   };
 
   return (
@@ -399,7 +434,7 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">運動記録</span>
-          <button className="btn-primary text-xs py-1 px-3" onClick={() => setOpen(true)}>＋ 追加</button>
+          <button className="btn-primary text-xs py-1 px-3" onClick={() => { reset(); setOpen(true); }}>＋ 追加</button>
         </div>
         {log.exercises.length === 0 ? (
           <div className="card text-center text-sm text-gray-400 py-4">記録なし</div>
@@ -407,12 +442,12 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
           <div className="space-y-2">
             {log.exercises.map(ex => (
               <div key={ex.id} className="card flex items-center gap-3">
-                <span className="text-2xl">{ex.type === 'gym' ? '🏋️' : '🚶'}</span>
+                <span className="text-2xl">{icon(ex)}</span>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-800">{ex.name}</div>
-                  <div className="text-xs text-gray-400">{ex.duration}分{ex.memo ? `・${ex.memo}` : ''}</div>
+                  <div className="text-sm font-medium text-gray-800">{ex.name}{ex.part ? ` (${ex.part})` : ''}</div>
+                  {subLabel(ex) && <div className="text-xs text-gray-400">{subLabel(ex)}</div>}
                 </div>
-                <div className="text-right flex items-center gap-2">
+                <div className="flex items-center gap-2">
                   <span className="num text-sm font-semibold text-[#12b76a]">-{ex.burnCal} kcal</span>
                   <button onClick={() => remove(ex.id)} className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200">
                     <X size={14} className="text-gray-500" />
@@ -426,6 +461,7 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
 
       <BottomSheet open={open} onClose={() => setOpen(false)} title="運動を追加">
         <div className="space-y-4">
+          {/* Type */}
           <div>
             <label className="text-sm text-gray-600 block mb-1.5">種別</label>
             <div className="flex gap-2">
@@ -436,24 +472,118 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
               ))}
             </div>
           </div>
-          <div>
-            <label className="text-sm text-gray-600 block mb-1">種目・内容名</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 胸・肩トレ" />
-          </div>
-          <div className="grid grid-cols-2 gap-2">
+
+          {/* SubType (gym only) */}
+          {type === 'gym' && (
             <div>
-              <label className="text-sm text-gray-600 block mb-1">時間 (分)</label>
-              <input type="number" value={duration} onChange={e => setDuration(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="60" />
+              <label className="text-sm text-gray-600 block mb-1.5">トレーニング種類</label>
+              <div className="flex gap-2">
+                <button onClick={() => setSubType('strength')} className={`flex-1 py-2 rounded-xl border text-sm font-medium ${subType === 'strength' ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>💪 筋トレ</button>
+                <button onClick={() => setSubType('cardio')} className={`flex-1 py-2 rounded-xl border text-sm font-medium ${subType === 'cardio' ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>🏃 有酸素</button>
+              </div>
             </div>
-            <div>
-              <label className="text-sm text-gray-600 block mb-1">消費カロリー (kcal)</label>
-              <input type="number" value={burnCal} onChange={e => setBurnCal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="300" />
-            </div>
-          </div>
-          <div>
-            <label className="text-sm text-gray-600 block mb-1">メモ (任意)</label>
-            <input type="text" value={memo} onChange={e => setMemo(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: ベンチ5セット" />
-          </div>
+          )}
+
+          {/* Strength fields */}
+          {type === 'gym' && subType === 'strength' && (
+            <>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1.5">部位</label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {BODY_PARTS.map(bp => (
+                    <button key={bp} onClick={() => setPart(bp)} className={`px-3 py-1 rounded-full text-sm border ${part === bp ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>{bp}</button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">種目名</label>
+                <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: ベンチプレス" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">開始時刻 — 任意</label>
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" />
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[{ label: '重さ (kg)', val: weight, set: setWeight, ph: '80' }, { label: '回数', val: reps, set: setReps, ph: '10' }, { label: 'セット数', val: sets, set: setSets, ph: '5' }].map(({ label, val, set, ph }) => (
+                  <div key={label}>
+                    <label className="text-xs text-gray-500 block mb-1">{label}</label>
+                    <input type="number" value={val} onChange={e => set(e.target.value)} className="w-full border border-gray-200 rounded-xl px-2 py-2 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder={ph} />
+                  </div>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">運動時間 (分) — 任意</label>
+                  <input type="number" value={duration} onChange={e => setDuration(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="60" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">消費カロリー (kcal)</label>
+                  <input type="number" value={burnCal} onChange={e => setBurnCal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="300" />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">メモ — 任意</label>
+                <input type="text" value={memo} onChange={e => setMemo(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="フォームのポイントなど" />
+              </div>
+            </>
+          )}
+
+          {/* Cardio fields */}
+          {type === 'gym' && subType === 'cardio' && (
+            <>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">種目名</label>
+                <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: トレッドミル" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">開始時刻 — 任意</label>
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">運動時間 (分)</label>
+                  <input type="number" value={duration} onChange={e => setDuration(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="30" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">消費カロリー (kcal)</label>
+                  <input type="number" value={burnCal} onChange={e => setBurnCal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="200" />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">傾斜・速度メモ</label>
+                <input type="text" value={memo} onChange={e => setMemo(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 傾斜2・速度7" />
+              </div>
+            </>
+          )}
+
+          {/* Other fields */}
+          {type === 'other' && (
+            <>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">内容</label>
+                <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: ウォーキング" />
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">開始時刻 — 任意</label>
+                <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" />
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">運動時間 (分) — 任意</label>
+                  <input type="number" value={duration} onChange={e => setDuration(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="30" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">消費カロリー (kcal)</label>
+                  <input type="number" value={burnCal} onChange={e => setBurnCal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="150" />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">メモ — 任意</label>
+                <input type="text" value={memo} onChange={e => setMemo(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 近所を一周" />
+              </div>
+            </>
+          )}
+
           <button onClick={add} className="btn-primary w-full py-3">追加</button>
         </div>
       </BottomSheet>
@@ -461,24 +591,14 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
   );
 }
 
-// ---- Health Section ----
+// ─── Health Section ───────────────────────────────────────────────────────────
 function HealthSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
   const [sleepOpen, setSleepOpen] = useState(false);
   const [bowelOpen, setBowelOpen] = useState(false);
-  const [sleepVal, setSleepVal] = useState(log.sleep ?? '');
-  const [bowelVal, setBowelVal] = useState(log.bowel ?? '');
-
+  const [sleepVal, setSleepVal] = useState('');
+  const [bowelVal, setBowelVal] = useState('');
   const sleepPresets = ['5h', '5.5h', '6h', '6.5h', '7h', '7.5h', '8h', '8.5h', '9h'];
   const bowelPresets = ['あり', 'なし', '2回以上'];
-
-  const saveSleep = () => {
-    onDataChange(setDayLog(data, dateKey, { ...log, sleep: sleepVal }));
-    setSleepOpen(false);
-  };
-  const saveBowel = () => {
-    onDataChange(setDayLog(data, dateKey, { ...log, bowel: bowelVal }));
-    setBowelOpen(false);
-  };
 
   return (
     <>
@@ -495,7 +615,6 @@ function HealthSection({ log, dateKey, data, onDataChange }: { log: DayLog; date
           </button>
         </div>
       </div>
-
       <BottomSheet open={sleepOpen} onClose={() => setSleepOpen(false)} title="睡眠を記録">
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2">
@@ -503,14 +622,10 @@ function HealthSection({ log, dateKey, data, onDataChange }: { log: DayLog; date
               <button key={s} onClick={() => setSleepVal(s)} className={`py-2 rounded-xl border text-sm font-medium ${sleepVal === s ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>{s}</button>
             ))}
           </div>
-          <div>
-            <label className="text-sm text-gray-600 block mb-1">または直接入力</label>
-            <input type="text" value={sleepVal} onChange={e => setSleepVal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 6.5h" />
-          </div>
-          <button onClick={saveSleep} className="btn-primary w-full py-3">保存</button>
+          <input type="text" value={sleepVal} onChange={e => setSleepVal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 6.5h" />
+          <button onClick={() => { onDataChange(setDayLog(data, dateKey, { ...log, sleep: sleepVal })); setSleepOpen(false); }} className="btn-primary w-full py-3">保存</button>
         </div>
       </BottomSheet>
-
       <BottomSheet open={bowelOpen} onClose={() => setBowelOpen(false)} title="排便を記録">
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2">
@@ -518,22 +633,17 @@ function HealthSection({ log, dateKey, data, onDataChange }: { log: DayLog; date
               <button key={b} onClick={() => setBowelVal(b)} className={`py-2 rounded-xl border text-sm font-medium ${bowelVal === b ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>{b}</button>
             ))}
           </div>
-          <button onClick={saveBowel} className="btn-primary w-full py-3">保存</button>
+          <button onClick={() => { onDataChange(setDayLog(data, dateKey, { ...log, bowel: bowelVal })); setBowelOpen(false); }} className="btn-primary w-full py-3">保存</button>
         </div>
       </BottomSheet>
     </>
   );
 }
 
-// ---- Memo Section ----
+// ─── Memo Section ─────────────────────────────────────────────────────────────
 function MemoSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
   const [open, setOpen] = useState(false);
-  const [text, setText] = useState(log.memo);
-
-  const save = () => {
-    onDataChange(setDayLog(data, dateKey, { ...log, memo: text }));
-    setOpen(false);
-  };
+  const [text, setText] = useState('');
 
   return (
     <>
@@ -545,34 +655,22 @@ function MemoSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
           </button>
         </div>
         <div className="card min-h-[48px]">
-          {log.memo ? (
-            <p className="text-sm text-gray-700 whitespace-pre-wrap">{log.memo}</p>
-          ) : (
-            <p className="text-sm text-gray-400">メモなし</p>
-          )}
+          {log.memo ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{log.memo}</p> : <p className="text-sm text-gray-400">メモなし</p>}
         </div>
       </div>
-
       <BottomSheet open={open} onClose={() => setOpen(false)} title="メモを編集">
         <div className="space-y-4">
-          <textarea
-            value={text}
-            onChange={e => setText(e.target.value)}
-            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
-            rows={6}
-            placeholder="体調・気づきなど..."
-          />
-          <button onClick={save} className="btn-primary w-full py-3">保存</button>
+          <textarea value={text} onChange={e => setText(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" rows={6} placeholder="体調・気づきなど..." />
+          <button onClick={() => { onDataChange(setDayLog(data, dateKey, { ...log, memo: text })); setOpen(false); }} className="btn-primary w-full py-3">保存</button>
         </div>
       </BottomSheet>
     </>
   );
 }
 
-// ---- Main Today Tab ----
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function TodayTab({ dateKey, data, onDataChange }: Props) {
   const log = getDayLog(data, dateKey);
-
   return (
     <div>
       {log.eatingOut ? (
