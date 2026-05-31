@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import { format, addDays, subDays, isToday, parseISO } from 'date-fns';
+import { format, addDays, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Utensils, BarChart2, CalendarDays, Settings as SettingsIcon, ClipboardList } from 'lucide-react';
 import { AppData } from './types';

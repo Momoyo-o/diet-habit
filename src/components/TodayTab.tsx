@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Plus, X, Pencil } from 'lucide-react';
+import { X, Pencil } from 'lucide-react';
 import { AppData, DayLog, MealEntry, ExerciseEntry } from '../types';
 import { getDayLog, setDayLog, calcBMI } from '../store';
 import BottomSheet from './BottomSheet';

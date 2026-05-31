@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Pencil } from 'lucide-react';
-import { format, startOfWeek, addWeeks, subWeeks, addDays, parseISO } from 'date-fns';
+import { format, startOfWeek, addWeeks, addDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import { AppData } from '../types';
