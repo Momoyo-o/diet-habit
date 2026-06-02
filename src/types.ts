@@ -7,8 +7,13 @@ export type MealEntry = {
   c: number;
 };
 
+export type ExerciseSet = {
+  weight: number | null;
+  reps: number | null;
+};
+
 export type ExerciseEntry = {
-  id: number;
+  id: number | string;
   type: 'gym' | 'other';
   subType: 'strength' | 'cardio' | '';
   part: string;
@@ -17,15 +22,15 @@ export type ExerciseEntry = {
   weight: number | null;
   reps: number | null;
   sets: number | null;
+  setsDetail: ExerciseSet[] | null;
   duration: number | null;
   burnCal: number;
   memo: string;
+  fromMenu?: boolean;
 };
 
 export type MenuEdit = {
-  weight: number | null;
-  reps: number | null;
-  sets: number | null;
+  sets: ExerciseSet[];
 };
 
 export type DayLog = {

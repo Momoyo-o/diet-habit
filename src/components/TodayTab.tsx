@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { X, Pencil, Dumbbell, Activity, Footprints, Moon, Droplets, Store, Utensils } from 'lucide-react';
-import { AppData, DayLog, MealEntry, ExerciseEntry } from '../types';
+import { X, Pencil, Dumbbell, Activity, Footprints, Moon, Droplets, Store, Utensils, Copy, Minus, Plus } from 'lucide-react';
+import { AppData, DayLog, MealEntry, ExerciseEntry, ExerciseSet } from '../types';
 import { getDayLog, setDayLog, calcBMI } from '../store';
 import BottomSheet from './BottomSheet';
 import { parseWeekMenuJSON, getDayMenuFromJSON, WEEK_MENU_PLACEHOLDER } from '../utils/weekMenu';
@@ -10,6 +10,28 @@ type Props = {
   data: AppData;
   onDataChange: (d: AppData) => void;
 };
+
+// ─── Set helpers ─────────────────────────────────────────────────────────────
+function parseSetsField(setsStr: string, defaultWeight: number | null): ExerciseSet[] {
+  const match = setsStr.trim().match(/^(\d+)[×xX](\d+)$/);
+  if (match) {
+    const reps = parseInt(match[1]);
+    const count = parseInt(match[2]);
+    return Array.from({ length: count }, () => ({ weight: defaultWeight, reps }));
+  }
+  return [{ weight: defaultWeight, reps: null }];
+}
+
+function getOrInitSets(
+  menuEdits: Record<string, { sets: ExerciseSet[] }>,
+  ck: string,
+  ex: { sets: string; weight: number | null }
+): ExerciseSet[] {
+  const edit = menuEdits[ck];
+  if (edit?.sets?.length > 0) return edit.sets;
+  if (ex.sets) return parseSetsField(ex.sets, ex.weight);
+  return [{ weight: ex.weight, reps: null }];
+}
 
 // ─── Calorie Summary ─────────────────────────────────────────────────────────
 function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['settings'] }) {
@@ -135,7 +157,7 @@ function BodyCard({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: 
   );
 }
 
-// ─── Week Menu Card (JSON + Checklist + Inline Edit) ─────────────────────────
+// ─── Week Menu Card ───────────────────────────────────────────────────────────
 const Checkmark = () => (
   <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10">
     <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
@@ -164,16 +186,91 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
   const totalItems = todayMenu ? todayMenu.training.length + todayMenu.cardio.length : 0;
   const doneItems = Object.values(checks).filter(Boolean).length;
 
-  const toggleCheck = (key: string) => {
-    const dayChecks = { ...checks, [key]: !checks[key] };
-    onDataChange({ ...data, menuChecks: { ...data.menuChecks, [dateKey]: dayChecks } });
+  // Save updated sets for a training item, and sync the exercise entry if checked
+  const saveSets = (ck: string, sets: ExerciseSet[]) => {
+    const newMenuEdits = { ...menuEdits, [ck]: { sets } };
+    let newLog = { ...dayLog, menuEdits: newMenuEdits };
+
+    // If the exercise is already checked, also update its setsDetail
+    const exerciseId = `menu_${ck}`;
+    const exIdx = newLog.exercises.findIndex(e => e.id === exerciseId);
+    if (exIdx >= 0) {
+      const updatedEx: ExerciseEntry = { ...newLog.exercises[exIdx], setsDetail: sets, sets: sets.length };
+      const newExercises = [...newLog.exercises];
+      newExercises[exIdx] = updatedEx;
+      newLog = { ...newLog, exercises: newExercises };
+    }
+
+    onDataChange(setDayLog(data, dateKey, newLog));
   };
 
-  const updateMenuEdit = (ck: string, field: 'weight' | 'reps' | 'sets', rawVal: string) => {
-    const num = rawVal === '' ? null : parseFloat(rawVal);
-    const curEntry = menuEdits[ck] ?? { weight: null, reps: null, sets: null };
-    const newLog = { ...dayLog, menuEdits: { ...menuEdits, [ck]: { ...curEntry, [field]: num } } };
-    onDataChange(setDayLog(data, dateKey, newLog));
+  // Toggle training item (筋トレ)
+  const toggleTrainingCheck = (i: number, ex: { name: string; sets: string; weight: number | null; point: string }) => {
+    const ck = `t_${i}`;
+    const newChecked = !checks[ck];
+    const dayChecks = { ...checks, [ck]: newChecked };
+    const exerciseId = `menu_t_${i}`;
+
+    let newLog = { ...dayLog };
+    if (newChecked) {
+      const currentSets = getOrInitSets(menuEdits, ck, ex);
+      const entry: ExerciseEntry = {
+        id: exerciseId,
+        type: 'gym',
+        subType: 'strength',
+        part: '',
+        name: ex.name,
+        startTime: null,
+        weight: currentSets[0]?.weight ?? null,
+        reps: currentSets[0]?.reps ?? null,
+        sets: currentSets.length,
+        setsDetail: currentSets,
+        duration: null,
+        burnCal: 0,
+        memo: ex.point || '',
+        fromMenu: true,
+      };
+      newLog = { ...newLog, exercises: [...newLog.exercises, entry] };
+    } else {
+      newLog = { ...newLog, exercises: newLog.exercises.filter(e => e.id !== exerciseId) };
+    }
+
+    const newData = { ...data, menuChecks: { ...data.menuChecks, [dateKey]: dayChecks } };
+    onDataChange(setDayLog(newData, dateKey, newLog));
+  };
+
+  // Toggle cardio item
+  const toggleCardioCheck = (i: number, c: { name: string; duration: number; note: string }) => {
+    const ck = `c_${i}`;
+    const newChecked = !checks[ck];
+    const dayChecks = { ...checks, [ck]: newChecked };
+    const exerciseId = `menu_c_${i}`;
+
+    let newLog = { ...dayLog };
+    if (newChecked) {
+      const entry: ExerciseEntry = {
+        id: exerciseId,
+        type: 'gym',
+        subType: 'cardio',
+        part: '',
+        name: c.name,
+        startTime: null,
+        weight: null,
+        reps: null,
+        sets: null,
+        setsDetail: null,
+        duration: c.duration > 0 ? c.duration : null,
+        burnCal: 0,
+        memo: c.note || '',
+        fromMenu: true,
+      };
+      newLog = { ...newLog, exercises: [...newLog.exercises, entry] };
+    } else {
+      newLog = { ...newLog, exercises: newLog.exercises.filter(e => e.id !== exerciseId) };
+    }
+
+    const newData = { ...data, menuChecks: { ...data.menuChecks, [dateKey]: dayChecks } };
+    onDataChange(setDayLog(newData, dateKey, newLog));
   };
 
   const saveMenu = () => {
@@ -220,53 +317,105 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                 </div>
               )}
               <div className="space-y-3">
+                {/* 筋トレ */}
                 {todayMenu.training.length > 0 && (
                   <div>
                     <div className="text-xs font-semibold text-gray-500 mb-2">【筋トレ】</div>
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                       {todayMenu.training.map((ex, i) => {
                         const ck = `t_${i}`;
                         const done = !!checks[ck];
-                        const edit = menuEdits[ck] ?? { weight: null, reps: null, sets: null };
-                        const defWeight = ex.weight ?? null;
+                        const currentSets = getOrInitSets(menuEdits, ck, ex);
+
+                        const updateSet = (si: number, field: 'weight' | 'reps', rawVal: string) => {
+                          const val = rawVal === '' ? null : parseFloat(rawVal);
+                          const newSets = currentSets.map((s, j) => j === si ? { ...s, [field]: val } : s);
+                          saveSets(ck, newSets);
+                        };
+
+                        const copySet = (si: number) => {
+                          const newSets = [
+                            ...currentSets.slice(0, si + 1),
+                            { ...currentSets[si] },
+                            ...currentSets.slice(si + 1),
+                          ];
+                          saveSets(ck, newSets);
+                        };
+
+                        const removeSet = (si: number) => {
+                          if (currentSets.length <= 1) return;
+                          saveSets(ck, currentSets.filter((_, j) => j !== si));
+                        };
+
+                        const addSet = () => {
+                          const last = currentSets[currentSets.length - 1];
+                          saveSets(ck, [...currentSets, { weight: last?.weight ?? null, reps: last?.reps ?? null }]);
+                        };
+
                         return (
-                          <div key={i} className="rounded-xl bg-gray-50 px-2 py-2">
-                            {/* Checkbox + name row */}
-                            <div className="flex items-start gap-2">
+                          <div key={i} className="rounded-xl bg-gray-50 px-3 py-2.5">
+                            {/* Checkbox + name */}
+                            <div className="flex items-start gap-2 mb-2">
                               <button
-                                onClick={() => toggleCheck(ck)}
+                                onClick={() => toggleTrainingCheck(i, ex)}
                                 className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300 bg-white'}`}
                               >
                                 {done && <Checkmark />}
                               </button>
-                              <div className={`flex-1 ${done ? 'opacity-40' : ''}`}>
-                                <div className="flex items-baseline gap-1.5 flex-wrap">
-                                  <span className="text-sm font-medium text-gray-800">{ex.name}</span>
-                                  {ex.sets && <span className="text-xs text-gray-400">{ex.sets}</span>}
-                                </div>
+                              <div className="flex-1">
+                                <span className="text-sm font-medium text-gray-800">{ex.name}</span>
                                 {ex.point && <div className="text-xs text-gray-400 mt-0.5">{ex.point}</div>}
                               </div>
                             </div>
-                            {/* Inline edit row */}
-                            <div className="flex gap-2 mt-1.5 ml-6">
-                              {[
-                                { label: 'kg', field: 'weight' as const, val: edit.weight ?? defWeight, step: '0.5' },
-                                { label: '回', field: 'reps' as const, val: edit.reps, step: '1' },
-                                { label: 'set', field: 'sets' as const, val: edit.sets, step: '1' },
-                              ].map(({ label, field, val, step }) => (
-                                <div key={field} className="flex items-center gap-0.5">
+
+                            {/* Set rows */}
+                            <div className="ml-6 space-y-1.5">
+                              {currentSets.map((s, si) => (
+                                <div key={si} className="flex items-center gap-1">
+                                  <span className="text-xs text-gray-400 w-4 text-right flex-shrink-0">{si + 1}</span>
                                   <input
                                     type="number"
                                     min="0"
-                                    step={step}
-                                    value={val ?? ''}
-                                    onChange={e => updateMenuEdit(ck, field, e.target.value)}
+                                    step="0.5"
+                                    value={s.weight ?? ''}
+                                    onChange={e => updateSet(si, 'weight', e.target.value)}
                                     className="w-14 border border-gray-200 bg-white rounded-lg px-1.5 py-1 text-xs text-center num focus:outline-none focus:ring-1 focus:ring-[#3b6ef5]"
-                                    placeholder="—"
+                                    placeholder="kg"
                                   />
-                                  <span className="text-xs text-gray-400">{label}</span>
+                                  <span className="text-xs text-gray-400">kg</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={s.reps ?? ''}
+                                    onChange={e => updateSet(si, 'reps', e.target.value)}
+                                    className="w-12 border border-gray-200 bg-white rounded-lg px-1.5 py-1 text-xs text-center num focus:outline-none focus:ring-1 focus:ring-[#3b6ef5]"
+                                    placeholder="回"
+                                  />
+                                  <span className="text-xs text-gray-400">回</span>
+                                  <button
+                                    onClick={() => copySet(si)}
+                                    className="p-1 rounded-md bg-white border border-gray-200 active:bg-gray-100 ml-1"
+                                    title="この行をコピー"
+                                  >
+                                    <Copy size={10} className="text-gray-400" />
+                                  </button>
+                                  <button
+                                    onClick={() => removeSet(si)}
+                                    disabled={currentSets.length <= 1}
+                                    className={`p-1 rounded-md bg-white border border-gray-200 ${currentSets.length <= 1 ? 'opacity-30 cursor-not-allowed' : 'active:bg-gray-100'}`}
+                                    title="この行を削除"
+                                  >
+                                    <Minus size={10} className="text-gray-400" />
+                                  </button>
                                 </div>
                               ))}
+                              <button
+                                onClick={addSet}
+                                className="flex items-center gap-1 text-xs text-[#3b6ef5] py-0.5 mt-0.5"
+                              >
+                                <Plus size={11} />セット追加
+                              </button>
                             </div>
                           </div>
                         );
@@ -274,6 +423,8 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                     </div>
                   </div>
                 )}
+
+                {/* 有酸素 */}
                 {todayMenu.cardio.length > 0 && (
                   <div>
                     <div className="text-xs font-semibold text-gray-500 mb-1.5">【有酸素】</div>
@@ -282,7 +433,7 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                         const ck = `c_${i}`;
                         const done = !!checks[ck];
                         return (
-                          <button key={i} onClick={() => toggleCheck(ck)} className="w-full flex items-start gap-2 text-left py-1.5 px-2 rounded-xl bg-gray-50 active:bg-gray-100">
+                          <button key={i} onClick={() => toggleCardioCheck(i, c)} className="w-full flex items-start gap-2 text-left py-1.5 px-2 rounded-xl bg-gray-50 active:bg-gray-100">
                             <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300 bg-white'}`}>
                               {done && <Checkmark />}
                             </span>
@@ -445,17 +596,31 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
       weight: weight ? parseFloat(weight) : null,
       reps: reps ? parseInt(reps) : null,
       sets: sets ? parseInt(sets) : null,
+      setsDetail: null,
       duration: duration ? parseInt(duration) : null,
       burnCal: parseInt(burnCal) || 0,
       memo,
+      fromMenu: false,
     };
     onDataChange(setDayLog(data, dateKey, { ...log, exercises: [...log.exercises, entry] }));
     setOpen(false);
     reset();
   };
 
-  const remove = (id: number) => {
-    onDataChange(setDayLog(data, dateKey, { ...log, exercises: log.exercises.filter(e => e.id !== id) }));
+  const remove = (id: number | string) => {
+    const ex = log.exercises.find(e => e.id === id);
+    const newExercises = log.exercises.filter(e => e.id !== id);
+
+    if (ex?.fromMenu) {
+      // Uncheck the corresponding menu item: 'menu_t_0' → 't_0'
+      const ck = String(id).replace(/^menu_/, '');
+      const dayChecks = { ...(data.menuChecks[dateKey] ?? {}), [ck]: false };
+      const newData = { ...data, menuChecks: { ...data.menuChecks, [dateKey]: dayChecks } };
+      onDataChange(setDayLog(newData, dateKey, { ...log, exercises: newExercises }));
+      return;
+    }
+
+    onDataChange(setDayLog(data, dateKey, { ...log, exercises: newExercises }));
   };
 
   const ExerciseIcon = ({ ex }: { ex: ExerciseEntry }) => {
@@ -470,8 +635,20 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
     const parts: string[] = [];
     if (ex.startTime) parts.push(`${ex.startTime}〜`);
     if (ex.subType === 'strength') {
-      const detail = [ex.weight ? `${ex.weight}kg` : null, ex.reps ? `${ex.reps}回` : null, ex.sets ? `${ex.sets}セット` : null].filter(Boolean).join(' × ');
-      if (detail) parts.push(detail);
+      if (ex.setsDetail && ex.setsDetail.length > 0) {
+        const detail = ex.setsDetail
+          .map(s => [s.weight != null ? `${s.weight}kg` : null, s.reps != null ? `×${s.reps}` : null].filter(Boolean).join(''))
+          .filter(Boolean)
+          .join(', ');
+        if (detail) parts.push(detail);
+      } else {
+        const detail = [
+          ex.weight ? `${ex.weight}kg` : null,
+          ex.reps ? `${ex.reps}回` : null,
+          ex.sets ? `${ex.sets}セット` : null,
+        ].filter(Boolean).join(' × ');
+        if (detail) parts.push(detail);
+      }
     }
     if (ex.duration) parts.push(`${ex.duration}分`);
     if (ex.memo) parts.push(ex.memo);
@@ -493,11 +670,16 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
               <div key={ex.id} className="card flex items-center gap-3">
                 <ExerciseIcon ex={ex} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-800">{ex.name}{ex.part ? ` (${ex.part})` : ''}</div>
-                  {subLabel(ex) && <div className="text-xs text-gray-400">{subLabel(ex)}</div>}
+                  <div className="text-sm font-medium text-gray-800">
+                    {ex.name}{ex.part ? ` (${ex.part})` : ''}
+                    {ex.fromMenu && <span className="ml-1.5 text-xs text-[#3b6ef5] bg-blue-50 px-1.5 py-0.5 rounded-full">メニュー</span>}
+                  </div>
+                  {subLabel(ex) && <div className="text-xs text-gray-400 mt-0.5">{subLabel(ex)}</div>}
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className="num text-sm font-semibold text-[#12b76a]">-{ex.burnCal} kcal</span>
+                  {ex.burnCal > 0 && (
+                    <span className="num text-sm font-semibold text-[#12b76a]">-{ex.burnCal} kcal</span>
+                  )}
                   <button onClick={() => remove(ex.id)} className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200">
                     <X size={14} className="text-gray-500" />
                   </button>
