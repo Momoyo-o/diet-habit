@@ -14,11 +14,9 @@ type Props = {
 // ─── Calorie Summary ─────────────────────────────────────────────────────────
 function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['settings'] }) {
   const totalCal = log.meals.reduce((s, m) => s + m.cal, 0);
-  const burnCal = log.exercises.reduce((s, e) => s + e.burnCal, 0);
-  const netCal = totalCal - burnCal;
-  const remaining = settings.targetCal - netCal;
-  const pct = Math.min((netCal / settings.targetCal) * 100, 100);
-  const over = netCal > settings.targetCal;
+  const remaining = settings.targetCal - totalCal;
+  const pct = Math.min((totalCal / settings.targetCal) * 100, 100);
+  const over = totalCal > settings.targetCal;
   const totalP = log.meals.reduce((s, m) => s + m.p, 0);
   const totalF = log.meals.reduce((s, m) => s + m.f, 0);
   const totalC = log.meals.reduce((s, m) => s + m.c, 0);
@@ -27,9 +25,8 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
     <div className="card mb-3">
       <div className="flex items-start justify-between mb-1">
         <div>
-          <span className="num text-4xl font-bold text-gray-900">{netCal}</span>
+          <span className="num text-4xl font-bold text-gray-900">{totalCal}</span>
           <span className="text-sm text-gray-500 ml-1">kcal</span>
-          <div className="text-xs text-gray-400 mt-0.5">摂取 {totalCal} − 消費 {burnCal}</div>
         </div>
         <div className="text-right">
           <div className={`text-sm font-semibold ${over ? 'text-red-500' : 'text-[#12b76a]'}`}>
@@ -50,7 +47,7 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
           <div key={key} className="bg-gray-50 rounded-xl p-2">
             <div className="flex items-baseline gap-1 mb-1">
               <span className="text-xs font-semibold text-gray-500">{key}</span>
-              <span className="num text-lg font-bold text-gray-900">{val}</span>
+              <span className="num text-lg font-bold text-gray-900">{val.toFixed(1)}</span>
               <span className="text-xs text-gray-400">g</span>
             </div>
             <div className="text-xs text-gray-400 mb-1">{label} /{target}g</div>
@@ -138,7 +135,13 @@ function BodyCard({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: 
   );
 }
 
-// ─── Week Menu Card (JSON + Checklist) ───────────────────────────────────────
+// ─── Week Menu Card (JSON + Checklist + Inline Edit) ─────────────────────────
+const Checkmark = () => (
+  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10">
+    <path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+  </svg>
+);
+
 function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
   const [open, setOpen] = useState(false);
   const [menuText, setMenuText] = useState('');
@@ -155,6 +158,8 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
   const parsed = rawMenu ? parseWeekMenuJSON(rawMenu) : null;
   const todayMenu = parsed ? getDayMenuFromJSON(parsed, dateKey) : null;
   const checks = data.menuChecks[dateKey] ?? {};
+  const dayLog = getDayLog(data, dateKey);
+  const menuEdits = dayLog.menuEdits ?? {};
 
   const totalItems = todayMenu ? todayMenu.training.length + todayMenu.cardio.length : 0;
   const doneItems = Object.values(checks).filter(Boolean).length;
@@ -162,6 +167,13 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
   const toggleCheck = (key: string) => {
     const dayChecks = { ...checks, [key]: !checks[key] };
     onDataChange({ ...data, menuChecks: { ...data.menuChecks, [dateKey]: dayChecks } });
+  };
+
+  const updateMenuEdit = (ck: string, field: 'weight' | 'reps' | 'sets', rawVal: string) => {
+    const num = rawVal === '' ? null : parseFloat(rawVal);
+    const curEntry = menuEdits[ck] ?? { weight: null, reps: null, sets: null };
+    const newLog = { ...dayLog, menuEdits: { ...menuEdits, [ck]: { ...curEntry, [field]: num } } };
+    onDataChange(setDayLog(data, dateKey, newLog));
   };
 
   const saveMenu = () => {
@@ -200,7 +212,6 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
             </div>
           ) : (
             <div>
-              {/* Progress badge */}
               {totalItems > 0 && (
                 <div className="flex justify-end mb-2">
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${doneItems === totalItems ? 'bg-[#12b76a] text-white' : 'bg-gray-100 text-gray-500'}`}>
@@ -211,22 +222,53 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
               <div className="space-y-3">
                 {todayMenu.training.length > 0 && (
                   <div>
-                    <div className="text-xs font-semibold text-gray-500 mb-1">【筋トレ】</div>
-                    <div className="space-y-1.5">
+                    <div className="text-xs font-semibold text-gray-500 mb-2">【筋トレ】</div>
+                    <div className="space-y-2">
                       {todayMenu.training.map((ex, i) => {
                         const ck = `t_${i}`;
                         const done = !!checks[ck];
+                        const edit = menuEdits[ck] ?? { weight: null, reps: null, sets: null };
+                        const defWeight = ex.weight ?? null;
                         return (
-                          <button key={i} onClick={() => toggleCheck(ck)} className="w-full flex items-start gap-2 text-left py-1 px-2 rounded-lg active:bg-gray-50">
-                            <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300'}`}>
-                              {done && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                            </span>
-                            <div className={done ? 'line-through opacity-40' : ''}>
-                              <span className="text-sm font-medium text-gray-800">{ex.name}</span>
-                              {ex.sets && <span className="text-xs text-gray-400 ml-1.5">{ex.sets}</span>}
-                              {ex.point && <span className="text-xs text-gray-400 ml-1.5">{ex.point}</span>}
+                          <div key={i} className="rounded-xl bg-gray-50 px-2 py-2">
+                            {/* Checkbox + name row */}
+                            <div className="flex items-start gap-2">
+                              <button
+                                onClick={() => toggleCheck(ck)}
+                                className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300 bg-white'}`}
+                              >
+                                {done && <Checkmark />}
+                              </button>
+                              <div className={`flex-1 ${done ? 'opacity-40' : ''}`}>
+                                <div className="flex items-baseline gap-1.5 flex-wrap">
+                                  <span className="text-sm font-medium text-gray-800">{ex.name}</span>
+                                  {ex.sets && <span className="text-xs text-gray-400">{ex.sets}</span>}
+                                </div>
+                                {ex.point && <div className="text-xs text-gray-400 mt-0.5">{ex.point}</div>}
+                              </div>
                             </div>
-                          </button>
+                            {/* Inline edit row */}
+                            <div className="flex gap-2 mt-1.5 ml-6">
+                              {[
+                                { label: 'kg', field: 'weight' as const, val: edit.weight ?? defWeight, step: '0.5' },
+                                { label: '回', field: 'reps' as const, val: edit.reps, step: '1' },
+                                { label: 'set', field: 'sets' as const, val: edit.sets, step: '1' },
+                              ].map(({ label, field, val, step }) => (
+                                <div key={field} className="flex items-center gap-0.5">
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step={step}
+                                    value={val ?? ''}
+                                    onChange={e => updateMenuEdit(ck, field, e.target.value)}
+                                    className="w-14 border border-gray-200 bg-white rounded-lg px-1.5 py-1 text-xs text-center num focus:outline-none focus:ring-1 focus:ring-[#3b6ef5]"
+                                    placeholder="—"
+                                  />
+                                  <span className="text-xs text-gray-400">{label}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
@@ -234,17 +276,17 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                 )}
                 {todayMenu.cardio.length > 0 && (
                   <div>
-                    <div className="text-xs font-semibold text-gray-500 mb-1">【有酸素】</div>
+                    <div className="text-xs font-semibold text-gray-500 mb-1.5">【有酸素】</div>
                     <div className="space-y-1.5">
                       {todayMenu.cardio.map((c, i) => {
                         const ck = `c_${i}`;
                         const done = !!checks[ck];
                         return (
-                          <button key={i} onClick={() => toggleCheck(ck)} className="w-full flex items-start gap-2 text-left py-1 px-2 rounded-lg active:bg-gray-50">
-                            <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300'}`}>
-                              {done && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          <button key={i} onClick={() => toggleCheck(ck)} className="w-full flex items-start gap-2 text-left py-1.5 px-2 rounded-xl bg-gray-50 active:bg-gray-100">
+                            <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300 bg-white'}`}>
+                              {done && <Checkmark />}
                             </span>
-                            <div className={done ? 'line-through opacity-40' : ''}>
+                            <div className={`${done ? 'opacity-40' : ''}`}>
                               <span className="text-sm font-medium text-gray-800">{c.name}</span>
                               {c.duration > 0 && <span className="text-xs text-gray-400 ml-1.5">{c.duration}分</span>}
                               {c.note && <span className="text-xs text-gray-400 ml-1.5">{c.note}</span>}
@@ -328,7 +370,7 @@ function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-800">{m.name}</div>
-                  <div className="text-xs text-gray-400">P {m.p}g・F {m.f}g・C {m.c}g</div>
+                  <div className="text-xs text-gray-400">P {m.p.toFixed(1)}g・F {m.f.toFixed(1)}g・C {m.c.toFixed(1)}g</div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="num text-sm font-semibold text-[#3b6ef5]">{m.cal} kcal</span>

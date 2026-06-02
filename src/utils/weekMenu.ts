@@ -1,6 +1,7 @@
 export type TrainingItem = {
   name: string;
   sets: string;
+  weight: number | null;
   point: string;
 };
 
@@ -46,7 +47,7 @@ export const WEEK_MENU_PLACEHOLDER = `{
       "date": "6/1",
       "rest": false,
       "training": [
-        { "name": "ベンチプレス", "sets": "10×5", "point": "肩甲骨を寄せる" }
+        { "name": "ベンチプレス", "sets": "10×5", "weight": 60, "point": "肩甲骨を寄せる" }
       ],
       "cardio": [
         { "name": "トレッドミル", "duration": 20, "note": "傾斜2・速度7" }

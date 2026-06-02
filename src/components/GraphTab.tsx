@@ -26,12 +26,8 @@ function CalendarCard({ data, todayKey }: { data: AppData; todayKey: string }) {
   const isCurrentMonth = viewDate.getFullYear() === today.getFullYear() && viewDate.getMonth() === today.getMonth();
   const monthLabel = format(viewDate, 'yyyy年M月', { locale: ja });
 
-  const goBack = () => setViewDate(d => subMonths(d, 1));
-  const goForward = () => { if (!isCurrentMonth) setViewDate(d => addMonths(d, 1)); };
-
   const firstDay = startOfMonth(viewDate);
   const lastDay = endOfMonth(viewDate);
-  // Mon=0 … Sun=6
   const startPad = (firstDay.getDay() + 6) % 7;
   const daysInMonth = lastDay.getDate();
 
@@ -58,21 +54,19 @@ function CalendarCard({ data, todayKey }: { data: AppData; todayKey: string }) {
   return (
     <div className="card">
       <div className="flex items-center justify-between mb-3">
-        <button onClick={goBack} className="p-1.5 rounded-lg hover:bg-gray-100">
+        <button onClick={() => setViewDate(d => subMonths(d, 1))} className="p-1.5 rounded-lg hover:bg-gray-100">
           <ChevronLeft size={18} className="text-gray-600" />
         </button>
         <span className="text-sm font-semibold text-gray-700">{monthLabel}</span>
-        <button onClick={goForward} disabled={isCurrentMonth} className={`p-1.5 rounded-lg ${isCurrentMonth ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-100'}`}>
+        <button onClick={() => !isCurrentMonth && setViewDate(d => addMonths(d, 1))} disabled={isCurrentMonth} className={`p-1.5 rounded-lg ${isCurrentMonth ? 'opacity-30 cursor-not-allowed' : 'hover:bg-gray-100'}`}>
           <ChevronRight size={18} className="text-gray-600" />
         </button>
       </div>
-      {/* Day headers */}
       <div className="grid grid-cols-7 text-center mb-1">
         {['月', '火', '水', '木', '金', '土', '日'].map(d => (
           <div key={d} className="text-xs text-gray-400 py-1">{d}</div>
         ))}
       </div>
-      {/* Day cells */}
       <div className="grid grid-cols-7 gap-y-1">
         {cells.map((day, i) =>
           day == null
@@ -80,7 +74,6 @@ function CalendarCard({ data, todayKey }: { data: AppData; todayKey: string }) {
             : <div key={day} className={getCellClass(day)}>{day}</div>
         )}
       </div>
-      {/* Legend */}
       <div className="flex gap-4 mt-3 justify-center">
         <div className="flex items-center gap-1.5">
           <div className="w-3 h-3 rounded-full bg-[#3b6ef5]" />
@@ -115,6 +108,7 @@ export default function GraphTab({ data, dateKey }: Props) {
       return {
         key, label,
         weight: log.body?.weight ?? null,
+        bodyfat: log.body?.bodyfat ?? null,
         netCal: totalCal > 0 || burnCal > 0 ? netCal : null,
         isOver: totalCal > 0 && netCal > data.settings.targetCal,
       };
@@ -128,10 +122,8 @@ export default function GraphTab({ data, dateKey }: Props) {
 
   const streak = useMemo(() => {
     let count = 0;
-    const today = new Date(dateKey);
     for (let i = 0; i < 365; i++) {
-      const d = subDays(today, i);
-      const key = dkFor(d);
+      const key = dkFor(subDays(new Date(dateKey), i));
       const log = getDayLog(data, key);
       if (log.body !== null || log.meals.length > 0 || log.exercises.length > 0) count++;
       else break;
@@ -140,7 +132,10 @@ export default function GraphTab({ data, dateKey }: Props) {
   }, [data, dateKey]);
 
   const weightData = points.map(p => ({ label: p.label, weight: p.weight }));
+  const bodyfatData = points.map(p => ({ label: p.label, bodyfat: p.bodyfat }));
   const calData = points.map(p => ({ label: p.label, cal: p.netCal, isOver: p.isOver }));
+
+  const { targetWeight, targetBodyfat } = data.settings;
 
   return (
     <div className="space-y-4">
@@ -177,7 +172,7 @@ export default function GraphTab({ data, dateKey }: Props) {
       <div className="card">
         <div className="text-sm font-semibold text-gray-700 mb-3">体重推移 (14日間)</div>
         <ResponsiveContainer width="100%" height={180}>
-          <AreaChart data={weightData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+          <AreaChart data={weightData} margin={{ top: 5, right: 24, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b6ef5" stopOpacity={0.2} />
@@ -188,7 +183,33 @@ export default function GraphTab({ data, dateKey }: Props) {
             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
             <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
             <Tooltip formatter={(v: number) => [`${v} kg`, '体重']} />
+            {targetWeight != null && (
+              <ReferenceLine y={targetWeight} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '目標', fontSize: 10, fill: '#f59e0b', position: 'right' }} />
+            )}
             <Area type="monotone" dataKey="weight" stroke="#3b6ef5" strokeWidth={2} fill="url(#wGrad)" connectNulls dot={{ r: 3, fill: '#3b6ef5' }} />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Bodyfat chart */}
+      <div className="card">
+        <div className="text-sm font-semibold text-gray-700 mb-3">体脂肪率推移 (14日間)</div>
+        <ResponsiveContainer width="100%" height={180}>
+          <AreaChart data={bodyfatData} margin={{ top: 5, right: 24, left: -20, bottom: 0 }}>
+            <defs>
+              <linearGradient id="bfGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2} />
+                <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+            <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
+            <Tooltip formatter={(v: number) => [`${v} %`, '体脂肪率']} />
+            {targetBodyfat != null && (
+              <ReferenceLine y={targetBodyfat} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '目標', fontSize: 10, fill: '#f59e0b', position: 'right' }} />
+            )}
+            <Area type="monotone" dataKey="bodyfat" stroke="#f59e0b" strokeWidth={2} fill="url(#bfGrad)" connectNulls dot={{ r: 3, fill: '#f59e0b' }} />
           </AreaChart>
         </ResponsiveContainer>
       </div>

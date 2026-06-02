@@ -11,6 +11,8 @@ const defaultSettings: Settings = {
   age: 25,
   gender: 'female',
   startWeight: 60,
+  targetWeight: null,
+  targetBodyfat: null,
 };
 
 const defaultDayLog = (): DayLog => ({
@@ -21,6 +23,7 @@ const defaultDayLog = (): DayLog => ({
   bowel: null,
   eatingOut: false,
   memo: '',
+  menuEdits: {},
 });
 
 export function loadData(): AppData {
@@ -45,7 +48,11 @@ export function saveData(data: AppData): void {
 }
 
 export function getDayLog(data: AppData, dateKey: string): DayLog {
-  return data.logs[dateKey] ?? defaultDayLog();
+  const stored = data.logs[dateKey];
+  if (!stored) return defaultDayLog();
+  // Backfill menuEdits for old logs that pre-date this field
+  if (!stored.menuEdits) return { ...stored, menuEdits: {} };
+  return stored;
 }
 
 export function setDayLog(data: AppData, dateKey: string, log: DayLog): AppData {

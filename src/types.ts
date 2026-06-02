@@ -22,6 +22,12 @@ export type ExerciseEntry = {
   memo: string;
 };
 
+export type MenuEdit = {
+  weight: number | null;
+  reps: number | null;
+  sets: number | null;
+};
+
 export type DayLog = {
   body: { weight: number; bodyfat: number | null } | null;
   meals: MealEntry[];
@@ -30,6 +36,7 @@ export type DayLog = {
   bowel: string | null;
   eatingOut: boolean;
   memo: string;
+  menuEdits: Record<string, MenuEdit>;
 };
 
 export type Settings = {
@@ -41,6 +48,8 @@ export type Settings = {
   age: number;
   gender: 'male' | 'female';
   startWeight: number;
+  targetWeight: number | null;
+  targetBodyfat: number | null;
 };
 
 export type AppData = {
