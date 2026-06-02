@@ -239,6 +239,34 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
     onDataChange(setDayLog(newData, dateKey, newLog));
   };
 
+  // Save a single field of a cardio edit, and live-update the exercise entry if checked
+  const saveCardioEdit = (
+    ck: string,
+    field: 'cardioBurnCal' | 'cardioIncline' | 'cardioSpeed' | 'cardioDuration',
+    rawVal: string
+  ) => {
+    const num = rawVal === '' ? null : parseFloat(rawVal);
+    const curEdit = menuEdits[ck] ?? { sets: [] };
+    const newEdit = { ...curEdit, [field]: num };
+    let newLog = { ...dayLog, menuEdits: { ...menuEdits, [ck]: newEdit } };
+
+    const exerciseId = `menu_${ck}`;
+    const exIdx = newLog.exercises.findIndex(e => e.id === exerciseId);
+    if (exIdx >= 0) {
+      const burnCal  = ((field === 'cardioBurnCal'  ? num : curEdit.cardioBurnCal)  ?? 0) as number;
+      const duration = (field === 'cardioDuration'  ? num : curEdit.cardioDuration) ?? newLog.exercises[exIdx].duration;
+      const incline  =  field === 'cardioIncline'   ? num : (curEdit.cardioIncline  ?? null);
+      const speed    =  field === 'cardioSpeed'     ? num : (curEdit.cardioSpeed    ?? null);
+      const memoParts = [incline != null ? `傾斜${incline}` : null, speed != null ? `速度${speed}` : null].filter(Boolean);
+      const updatedEx: ExerciseEntry = { ...newLog.exercises[exIdx], burnCal, duration, memo: memoParts.join('・') };
+      const newExercises = [...newLog.exercises];
+      newExercises[exIdx] = updatedEx;
+      newLog = { ...newLog, exercises: newExercises };
+    }
+
+    onDataChange(setDayLog(data, dateKey, newLog));
+  };
+
   // Toggle cardio item
   const toggleCardioCheck = (i: number, c: { name: string; duration: number; note: string }) => {
     const ck = `c_${i}`;
@@ -248,6 +276,12 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
 
     let newLog = { ...dayLog };
     if (newChecked) {
+      const edit = menuEdits[ck];
+      const burnCal  = edit?.cardioBurnCal  ?? 0;
+      const duration = edit?.cardioDuration ?? (c.duration > 0 ? c.duration : null);
+      const incline  = edit?.cardioIncline  ?? null;
+      const speed    = edit?.cardioSpeed    ?? null;
+      const memoParts = [incline != null ? `傾斜${incline}` : null, speed != null ? `速度${speed}` : null].filter(Boolean);
       const entry: ExerciseEntry = {
         id: exerciseId,
         type: 'gym',
@@ -259,9 +293,9 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
         reps: null,
         sets: null,
         setsDetail: null,
-        duration: c.duration > 0 ? c.duration : null,
-        burnCal: 0,
-        memo: c.note || '',
+        duration,
+        burnCal,
+        memo: memoParts.length > 0 ? memoParts.join('・') : c.note,
         fromMenu: true,
       };
       newLog = { ...newLog, exercises: [...newLog.exercises, entry] };
@@ -273,6 +307,13 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
     onDataChange(setDayLog(newData, dateKey, newLog));
   };
 
+  // Generate keys for Mon–Sun of this week
+  const weekDayKeys = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mondayKey + 'T00:00:00');
+    d.setDate(d.getDate() + i);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+
   const saveMenu = () => {
     if (menuText.trim()) {
       const result = parseWeekMenuJSON(menuText);
@@ -281,7 +322,38 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
         return;
       }
     }
-    onDataChange({ ...data, weekMenus: { ...data.weekMenus, [mondayKey]: menuText } });
+
+    // Warn if existing check/edit data would be cleared
+    const hasData = weekDayKeys.some(dk =>
+      Object.values(data.menuChecks[dk] ?? {}).some(Boolean) ||
+      data.logs[dk]?.exercises.some(e => e.fromMenu) ||
+      Object.keys(data.logs[dk]?.menuEdits ?? {}).length > 0
+    );
+    if (hasData && !window.confirm('週メニューを変更すると今週のチェック・重量入力がリセットされます。続けますか？')) {
+      return;
+    }
+
+    // Clear stale check/edit/fromMenu data for the whole week
+    const newMenuChecks = { ...data.menuChecks };
+    weekDayKeys.forEach(dk => { delete newMenuChecks[dk]; });
+
+    const newLogs = { ...data.logs };
+    weekDayKeys.forEach(dk => {
+      const existing = data.logs[dk];
+      if (!existing) return;
+      newLogs[dk] = {
+        ...existing,
+        exercises: existing.exercises.filter(e => !e.fromMenu),
+        menuEdits: {},
+      };
+    });
+
+    onDataChange({
+      ...data,
+      weekMenus: { ...data.weekMenus, [mondayKey]: menuText },
+      menuChecks: newMenuChecks,
+      logs: newLogs,
+    });
     setOpen(false);
   };
 
@@ -428,21 +500,50 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                 {todayMenu.cardio.length > 0 && (
                   <div>
                     <div className="text-xs font-semibold text-gray-500 mb-1.5">【有酸素】</div>
-                    <div className="space-y-1.5">
+                    <div className="space-y-3">
                       {todayMenu.cardio.map((c, i) => {
                         const ck = `c_${i}`;
                         const done = !!checks[ck];
+                        const edit = menuEdits[ck];
+                        const editDuration = edit?.cardioDuration ?? (c.duration > 0 ? c.duration : null);
+                        const editBurnCal  = edit?.cardioBurnCal  ?? null;
+                        const editIncline  = edit?.cardioIncline  ?? null;
+                        const editSpeed    = edit?.cardioSpeed    ?? null;
                         return (
-                          <button key={i} onClick={() => toggleCardioCheck(i, c)} className="w-full flex items-start gap-2 text-left py-1.5 px-2 rounded-xl bg-gray-50 active:bg-gray-100">
-                            <span className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300 bg-white'}`}>
-                              {done && <Checkmark />}
-                            </span>
-                            <div className={`${done ? 'opacity-40' : ''}`}>
-                              <span className="text-sm font-medium text-gray-800">{c.name}</span>
-                              {c.duration > 0 && <span className="text-xs text-gray-400 ml-1.5">{c.duration}分</span>}
-                              {c.note && <span className="text-xs text-gray-400 ml-1.5">{c.note}</span>}
+                          <div key={i} className="rounded-xl bg-gray-50 px-3 py-2.5">
+                            {/* Checkbox + name */}
+                            <div className="flex items-start gap-2 mb-2">
+                              <button
+                                onClick={() => toggleCardioCheck(i, c)}
+                                className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center ${done ? 'bg-[#3b6ef5] border-[#3b6ef5]' : 'border-gray-300 bg-white'}`}
+                              >
+                                {done && <Checkmark />}
+                              </button>
+                              <span className={`text-sm font-medium text-gray-800 ${done ? 'opacity-40' : ''}`}>{c.name}</span>
                             </div>
-                          </button>
+                            {/* Input fields */}
+                            <div className="ml-6 grid grid-cols-2 gap-x-4 gap-y-1.5">
+                              {([
+                                { label: '時間(分)', field: 'cardioDuration' as const, val: editDuration, step: '1',   ph: c.duration > 0 ? String(c.duration) : '30' },
+                                { label: '消費kcal', field: 'cardioBurnCal'  as const, val: editBurnCal,  step: '10',  ph: '—' },
+                                { label: '傾斜',     field: 'cardioIncline'  as const, val: editIncline,  step: '0.5', ph: '—' },
+                                { label: '速度',     field: 'cardioSpeed'    as const, val: editSpeed,    step: '0.5', ph: '—' },
+                              ] as const).map(({ label, field, val, step, ph }) => (
+                                <div key={field} className="flex items-center gap-1.5">
+                                  <span className="text-xs text-gray-400 w-14 flex-shrink-0">{label}</span>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    step={step}
+                                    value={val ?? ''}
+                                    onChange={e => saveCardioEdit(ck, field, e.target.value)}
+                                    className="flex-1 min-w-0 border border-gray-200 bg-white rounded-lg px-1.5 py-1 text-xs text-center num focus:outline-none focus:ring-1 focus:ring-[#3b6ef5]"
+                                    placeholder={ph}
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>

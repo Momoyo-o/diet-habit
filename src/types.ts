@@ -31,6 +31,10 @@ export type ExerciseEntry = {
 
 export type MenuEdit = {
   sets: ExerciseSet[];
+  cardioBurnCal?: number | null;
+  cardioIncline?: number | null;
+  cardioSpeed?: number | null;
+  cardioDuration?: number | null;
 };
 
 export type DayLog = {
