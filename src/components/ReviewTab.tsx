@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Pencil, Moon, Droplets } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Pencil, Moon, Droplets, Car, Bus, Plane } from 'lucide-react';
 import { format, startOfWeek, addWeeks, addDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
-import { AppData } from '../types';
+import { AppData, DayLog } from '../types';
 import { getDayLog } from '../store';
 import BottomSheet from './BottomSheet';
 
@@ -17,12 +17,39 @@ function dateKeyFor(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
+// Total training volume (kg) for a single day
+function calcLogVolume(log: DayLog): number {
+  return log.exercises
+    .filter(e => e.subType === 'strength')
+    .reduce((total, e) => {
+      if (e.setsDetail && e.setsDetail.length > 0) {
+        return total + e.setsDetail.reduce((s, set) => s + (set.weight ?? 0) * (set.reps ?? 0), 0);
+      }
+      return total + (e.weight ?? 0) * (e.reps ?? 0) * (e.sets ?? 0);
+    }, 0);
+}
+
+const VEHICLES = [
+  { label: '飛行機', unitKg: 300_000, Icon: Plane },
+  { label: 'バス',   unitKg:  10_000, Icon: Bus },
+  { label: '軽自動車', unitKg:    700, Icon: Car },
+] as const;
+
+function getBestVehicle(kg: number) {
+  for (const v of VEHICLES) {
+    const ratio = kg / v.unitKg;
+    if (ratio >= 1) return { ...v, ratio: Math.round(ratio * 10) / 10 };
+  }
+  return null;
+}
+
 const DOW = ['月', '火', '水', '木', '金', '土', '日'];
 
 export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
   const [weekOffset, setWeekOffset] = useState(0);
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoText, setMemoText] = useState('');
+  const [volumeTab, setVolumeTab] = useState<'week' | 'month' | 'total'>('week');
 
   const baseDate = new Date(dateKey);
   const monday = addWeeks(startOfWeek(baseDate, { weekStartsOn: 1 }), weekOffset);
@@ -57,6 +84,25 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
     const recordDays = days.filter(d => d.hasRecord).length;
     return { weightChange, avgCal, gymDays, eatOut, recordDays };
   }, [days]);
+
+  const volumeData = useMemo(() => {
+    const weekVol = Math.round(days.reduce((s, d) => s + calcLogVolume(d.log), 0));
+
+    const year = monday.getFullYear();
+    const month = monday.getMonth();
+    const ym = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const monthVol = Math.round(
+      Object.entries(data.logs)
+        .filter(([dk]) => dk.startsWith(ym))
+        .reduce((s, [, log]) => s + calcLogVolume(log), 0)
+    );
+
+    const totalVol = Math.round(
+      Object.values(data.logs).reduce((s, log) => s + calcLogVolume(log), 0)
+    );
+
+    return { week: weekVol, month: monthVol, total: totalVol };
+  }, [data, days, monday]);
 
   const calData = days.map(d => ({ dow: d.dow, cal: d.netCal, isOver: d.netCal !== null && d.netCal > data.settings.targetCal }));
   const weekMemo = data.weekMemos[mondayKey] ?? '';
@@ -103,6 +149,52 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
           ))}
         </div>
       </div>
+
+      {/* Total volume */}
+      {(() => {
+        const currentVol = volumeTab === 'week' ? volumeData.week : volumeTab === 'month' ? volumeData.month : volumeData.total;
+        const vehicle = getBestVehicle(currentVol);
+        return (
+          <div className="card">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-semibold text-gray-700">総負荷量</span>
+              <div className="flex gap-1">
+                {(['week', 'month', 'total'] as const).map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => setVolumeTab(tab)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-medium ${volumeTab === tab ? 'bg-[#3b6ef5] text-white' : 'bg-gray-100 text-gray-500'}`}
+                  >
+                    {tab === 'week' ? '今週' : tab === 'month' ? '今月' : '累計'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-end gap-1.5 mb-3">
+              <span className="num text-4xl font-bold text-gray-900">{currentVol.toLocaleString()}</span>
+              <span className="text-sm text-gray-400 mb-1">kg</span>
+            </div>
+
+            {vehicle ? (
+              <div className="flex items-center gap-3 bg-indigo-50 rounded-xl p-3">
+                <vehicle.Icon size={28} className="text-[#3b6ef5]" />
+                <div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xs text-gray-500">×</span>
+                    <span className="num text-2xl font-bold text-gray-900">{vehicle.ratio}</span>
+                  </div>
+                  <div className="text-xs text-gray-400">{vehicle.label}換算</div>
+                </div>
+              </div>
+            ) : currentVol > 0 ? (
+              <div className="text-xs text-gray-400">軽自動車1台（700 kg）未満</div>
+            ) : (
+              <div className="text-xs text-gray-400">筋トレ記録がありません</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Calorie bar chart */}
       <div className="card">

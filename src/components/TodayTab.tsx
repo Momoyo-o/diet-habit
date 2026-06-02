@@ -323,35 +323,23 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
       }
     }
 
-    // Warn if existing check/edit data would be cleared
-    const hasData = weekDayKeys.some(dk =>
-      Object.values(data.menuChecks[dk] ?? {}).some(Boolean) ||
-      data.logs[dk]?.exercises.some(e => e.fromMenu) ||
-      Object.keys(data.logs[dk]?.menuEdits ?? {}).length > 0
-    );
-    if (hasData && !window.confirm('週メニューを変更すると今週のチェック・重量入力がリセットされます。続けますか？')) {
-      return;
-    }
-
-    // Clear stale check/edit/fromMenu data for the whole week
-    const newMenuChecks = { ...data.menuChecks };
-    weekDayKeys.forEach(dk => { delete newMenuChecks[dk]; });
-
+    // Preserve checked entries (logs.exercises is the source of truth after check).
+    // Only clear menuEdits for unchecked items so new menu defaults show correctly.
     const newLogs = { ...data.logs };
     weekDayKeys.forEach(dk => {
       const existing = data.logs[dk];
       if (!existing) return;
-      newLogs[dk] = {
-        ...existing,
-        exercises: existing.exercises.filter(e => !e.fromMenu),
-        menuEdits: {},
-      };
+      const dayChecks = data.menuChecks[dk] ?? {};
+      // Keep menuEdits only for keys that are currently checked
+      const keptEdits = Object.fromEntries(
+        Object.entries(existing.menuEdits ?? {}).filter(([ck]) => !!dayChecks[ck])
+      );
+      newLogs[dk] = { ...existing, menuEdits: keptEdits };
     });
 
     onDataChange({
       ...data,
       weekMenus: { ...data.weekMenus, [mondayKey]: menuText },
-      menuChecks: newMenuChecks,
       logs: newLogs,
     });
     setOpen(false);

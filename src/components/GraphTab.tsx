@@ -181,7 +181,10 @@ export default function GraphTab({ data, dateKey }: Props) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-            <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
+            <YAxis tick={{ fontSize: 10 }} domain={[
+              (v: number) => Math.floor(Math.min(v, targetWeight ?? v) - 1),
+              (v: number) => Math.ceil(Math.max(v, targetWeight ?? v) + 1),
+            ]} />
             <Tooltip formatter={(v: number) => [`${v} kg`, '体重']} />
             {targetWeight != null && (
               <ReferenceLine y={targetWeight} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '目標', fontSize: 10, fill: '#f59e0b', position: 'right' }} />
@@ -204,7 +207,10 @@ export default function GraphTab({ data, dateKey }: Props) {
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-            <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
+            <YAxis tick={{ fontSize: 10 }} domain={[
+              (v: number) => Math.floor(Math.min(v, targetBodyfat ?? v) - 0.5),
+              (v: number) => Math.ceil(Math.max(v, targetBodyfat ?? v) + 0.5),
+            ]} />
             <Tooltip formatter={(v: number) => [`${v} %`, '体脂肪率']} />
             {targetBodyfat != null && (
               <ReferenceLine y={targetBodyfat} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '目標', fontSize: 10, fill: '#f59e0b', position: 'right' }} />
