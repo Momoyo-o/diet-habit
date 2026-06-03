@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { X, Pencil, Dumbbell, Activity, Footprints, Moon, Droplets, Store, Utensils, Copy, Minus, Plus } from 'lucide-react';
 import { AppData, DayLog, MealEntry, ExerciseEntry, ExerciseSet } from '../types';
 import { getDayLog, setDayLog, calcBMI } from '../store';
@@ -34,7 +34,7 @@ function getOrInitSets(
 }
 
 // ─── Calorie Summary ─────────────────────────────────────────────────────────
-function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['settings'] }) {
+function CalSummaryCard({ log, settings, eatingOut }: { log: DayLog; settings: AppData['settings']; eatingOut?: boolean }) {
   const totalCal = log.meals.reduce((s, m) => s + m.cal, 0);
   const remaining = settings.targetCal - totalCal;
   const pct = Math.min((totalCal / settings.targetCal) * 100, 100);
@@ -47,6 +47,7 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
     <div className="card mb-3">
       <div className="flex items-start justify-between mb-1">
         <div>
+          {eatingOut && <span className="text-3xl font-bold text-gray-400 mr-0.5">〜</span>}
           <span className="num text-4xl font-bold text-gray-900">{totalCal}</span>
           <span className="text-sm text-gray-500 ml-1">kcal</span>
         </div>
@@ -72,7 +73,7 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
               <span className="num text-lg font-bold text-gray-900">{val.toFixed(1)}</span>
               <span className="text-xs text-gray-400">g</span>
             </div>
-            <div className="text-xs text-gray-400 mb-1">{label} /{target}g</div>
+            <div className="text-xs text-gray-400 mb-1">{label} /{target}g{eatingOut && <span className="ml-1 text-amber-500">概算</span>}</div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <div className={`h-full ${color} rounded-full`} style={{ width: `${Math.min((val / target) * 100, 100)}%` }} />
             </div>
@@ -84,10 +85,18 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
 }
 
 // ─── Body Card ────────────────────────────────────────────────────────────────
-function BodyCard({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
+function BodyCard({ log, dateKey, data, onDataChange, trigger }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void; trigger?: number }) {
   const [open, setOpen] = useState(false);
   const [weight, setWeight] = useState('');
   const [bodyfat, setBodyfat] = useState('');
+
+  useEffect(() => {
+    if (!trigger) return;
+    setWeight(log.body?.weight?.toString() ?? '');
+    setBodyfat(log.body?.bodyfat?.toString() ?? '');
+    setOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger]);
 
   const prevDateKey = (() => {
     const d = new Date(dateKey);
@@ -565,13 +574,18 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
 // ─── Meal Section ─────────────────────────────────────────────────────────────
 const MEAL_TYPES = ['朝食', '昼食', '夕食', '間食', '1日トータル', 'その他'];
 
-function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
+function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void; eatingOut?: boolean; trigger?: number }) {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(MEAL_TYPES[0]);
   const [cal, setCal] = useState('');
   const [p, setP] = useState('');
   const [f, setF] = useState('');
   const [c, setC] = useState('');
+
+  useEffect(() => {
+    if (!trigger) return;
+    setOpen(true);
+  }, [trigger]);
 
   const add = () => {
     if (!cal) return;
@@ -609,7 +623,7 @@ function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
                   <Utensils size={16} className="text-orange-400" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-800">{m.name}</div>
+                  <div className="text-sm font-medium text-gray-800">{eatingOut && <span className="text-gray-400">〜</span>}{m.name}</div>
                   <div className="text-xs text-gray-400">P {m.p.toFixed(1)}g・F {m.f.toFixed(1)}g・C {m.c.toFixed(1)}g</div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -654,7 +668,7 @@ function MealSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
 // ─── Exercise Section ─────────────────────────────────────────────────────────
 const BODY_PARTS = ['胸', '背中', '脚', '肩', '腕', '腹', '全身'];
 
-function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
+function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void; trigger?: number }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<'gym' | 'other'>('gym');
   const [subType, setSubType] = useState<'strength' | 'cardio'>('strength');
@@ -672,6 +686,14 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
     setName(''); setStartTime(''); setWeight(''); setReps(''); setSets('');
     setDuration(''); setBurnCal(''); setMemo(''); setPart('胸');
   };
+
+  useEffect(() => {
+    if (!trigger) return;
+    setName(''); setStartTime(''); setWeight(''); setReps(''); setSets('');
+    setDuration(''); setBurnCal(''); setMemo(''); setPart('胸');
+    setOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger]);
 
   const add = () => {
     if (!name) return;
@@ -912,11 +934,18 @@ function ExerciseSection({ log, dateKey, data, onDataChange }: { log: DayLog; da
 }
 
 // ─── Health Section ───────────────────────────────────────────────────────────
-function HealthSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
+function HealthSection({ log, dateKey, data, onDataChange, trigger }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void; trigger?: number }) {
   const [sleepOpen, setSleepOpen] = useState(false);
   const [bowelOpen, setBowelOpen] = useState(false);
   const [sleepVal, setSleepVal] = useState('');
   const [bowelVal, setBowelVal] = useState('');
+
+  useEffect(() => {
+    if (!trigger) return;
+    setSleepVal(log.sleep ?? '');
+    setSleepOpen(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trigger]);
   const sleepPresets = ['5h', '5.5h', '6h', '6.5h', '7h', '7.5h', '8h', '8.5h', '9h'];
   const bowelPresets = ['あり', 'なし', '2回以上'];
 
@@ -996,28 +1025,46 @@ function MemoSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function TodayTab({ dateKey, data, onDataChange }: Props) {
+  const [bodyTrigger, setBodyTrigger] = useState(0);
+  const [mealTrigger, setMealTrigger] = useState(0);
+  const [exTrigger, setExTrigger] = useState(0);
+  const [healthTrigger, setHealthTrigger] = useState(0);
+
   const log = getDayLog(data, dateKey);
+
   return (
     <div>
-      {log.eatingOut ? (
+      {log.eatingOut && (
         <div className="card mb-3 bg-amber-50 border-amber-200">
           <div className="flex items-center gap-2">
             <Store size={20} className="text-amber-600 flex-shrink-0" />
-            <div>
-              <div className="text-sm font-semibold text-amber-800">外食モード</div>
-              <div className="text-xs text-amber-600">本日のカロリー・PFC集計は非表示です</div>
-            </div>
+            <div className="text-sm font-medium text-amber-700">外食モード — 概算値を表示しています</div>
           </div>
         </div>
-      ) : (
-        <CalSummaryCard log={log} settings={data.settings} />
       )}
-      <BodyCard log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} />
+      <CalSummaryCard log={log} settings={data.settings} eatingOut={log.eatingOut} />
+      <BodyCard log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} trigger={bodyTrigger} />
       <WeekMenuCard dateKey={dateKey} data={data} onDataChange={onDataChange} />
-      <MealSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} />
-      <ExerciseSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} />
-      <HealthSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} />
+      <MealSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} eatingOut={log.eatingOut} trigger={mealTrigger} />
+      <ExerciseSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} trigger={exTrigger} />
+      <HealthSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} trigger={healthTrigger} />
       <MemoSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} />
+      <div className="h-16" />
+
+      {/* Quick input bar */}
+      <div className="fixed bottom-14 left-1/2 -translate-x-1/2 w-full max-w-[420px] bg-white border-t border-gray-200 z-30 flex">
+        {([
+          { emoji: '⚖️', label: '体重', onClick: () => setBodyTrigger(t => t + 1) },
+          { emoji: '🍽️', label: '食事', onClick: () => setMealTrigger(t => t + 1) },
+          { emoji: '🏋️', label: '運動', onClick: () => setExTrigger(t => t + 1) },
+          { emoji: '😴', label: '体調', onClick: () => setHealthTrigger(t => t + 1) },
+        ] as const).map(({ emoji, label, onClick }) => (
+          <button key={label} onClick={onClick} className="flex-1 flex flex-col items-center py-2 gap-0.5 active:bg-gray-50">
+            <span className="text-xl leading-none">{emoji}</span>
+            <span className="text-[10px] font-medium text-gray-500">{label}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
