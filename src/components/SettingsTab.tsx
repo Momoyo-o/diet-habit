@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { AppData, Settings } from '../types';
-import { calcBMR, calcBMI } from '../store';
+import { Download, Check } from 'lucide-react';
+import { AppData, Settings, ExerciseEntry, MealEntry } from '../types';
+import { calcBMR, calcBMI, getDayLog } from '../store';
 import BottomSheet from './BottomSheet';
 
 type Props = {
@@ -8,24 +9,139 @@ type Props = {
   onDataChange: (d: AppData) => void;
 };
 
+// ─── Export helpers ───────────────────────────────────────────────────────────
+
+function fmtDate(dk: string): string {
+  return dk.replace(/-/g, '/');
+}
+
+function prevDk(dk: string): string {
+  const d = new Date(dk + 'T00:00:00');
+  d.setDate(d.getDate() - 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function buildDateRange(startDk: string, endDk: string): string[] {
+  const result: string[] = [];
+  const cur = new Date(startDk + 'T00:00:00');
+  const end = new Date(endDk + 'T00:00:00');
+  while (cur <= end) {
+    result.push(`${cur.getFullYear()}-${String(cur.getMonth() + 1).padStart(2, '0')}-${String(cur.getDate()).padStart(2, '0')}`);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return result;
+}
+
+function fmtExercise(e: ExerciseEntry): string {
+  const name = e.part ? `${e.name}（${e.part}）` : e.name;
+  if (e.subType === 'strength') {
+    if (e.setsDetail && e.setsDetail.length > 0) {
+      const sets = e.setsDetail
+        .map(s => `${s.weight != null ? s.weight + 'kg' : ''}${s.reps != null ? '×' + s.reps : ''}`)
+        .filter(Boolean)
+        .join(', ');
+      return sets ? `${name}　${sets}` : name;
+    }
+    const detail = [
+      e.weight != null ? `${e.weight}kg` : null,
+      e.reps != null ? `×${e.reps}` : null,
+      e.sets != null ? `×${e.sets}セット` : null,
+    ].filter(Boolean).join('');
+    return detail ? `${name}　${detail}` : name;
+  }
+  const extras = [e.duration != null ? `${e.duration}分` : null, e.memo || null].filter(Boolean).join('　');
+  return extras ? `${name}　${extras}` : name;
+}
+
+function fmtMeal(m: MealEntry): string {
+  return `${m.name}　${m.cal}kcal　P${m.p.toFixed(1)}g F${m.f.toFixed(1)}g C${m.c.toFixed(1)}g`;
+}
+
+function buildExportText(
+  data: AppData,
+  dks: string[],
+  opts: { exercise: boolean; meals: boolean; body: boolean; health: boolean }
+): string {
+  const blocks = dks.map(dk => {
+    const log = getDayLog(data, dk);
+    const prev = getDayLog(data, prevDk(dk));
+    const sections: string[] = [];
+
+    if (opts.exercise) {
+      if (log.exercises.length > 0) {
+        sections.push(`【運動】 ${log.exercises.map(fmtExercise).join(' ')}`);
+      } else {
+        sections.push('【運動】 （記録なし）');
+      }
+    }
+
+    if (opts.meals) {
+      if (log.meals.length > 0) {
+        sections.push(`【食事】 ${log.meals.map(fmtMeal).join(' ')}`);
+      } else {
+        sections.push('【食事】 （記録なし）');
+      }
+    }
+
+    if (opts.body) {
+      if (log.body) {
+        const diff = prev.body
+          ? Math.round((log.body.weight - prev.body.weight) * 10) / 10
+          : null;
+        const diffStr = diff != null
+          ? `（前日比 ${diff > 0 ? '+' : diff < 0 ? '−' : ''}${Math.abs(diff)}kg）`
+          : '';
+        const bfStr = log.body.bodyfat != null ? `　体脂肪率 ${log.body.bodyfat}%` : '';
+        sections.push(`【体重・体脂肪】 体重 ${log.body.weight}kg${diffStr}${bfStr}`);
+      } else {
+        sections.push('【体重・体脂肪】 （記録なし）');
+      }
+    }
+
+    if (opts.health) {
+      const parts: string[] = [];
+      if (log.sleep) parts.push(`睡眠 ${log.sleep}`);
+      if (log.bowel) parts.push(`排便 ${log.bowel}`);
+      if (log.memo) parts.push(`メモ：${log.memo}`);
+      sections.push(`【体調】 ${parts.length > 0 ? parts.join('　') : '（記録なし）'}`);
+    }
+
+    if (sections.length === 0) return null;
+    return `${fmtDate(dk)} ${sections[0]}${sections.length > 1 ? '\n' + sections.slice(1).join('\n') : ''}`;
+  });
+
+  return blocks.filter((b): b is string => b !== null).join('\n\n');
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function SettingsTab({ data, onDataChange }: Props) {
   const s = data.settings;
+
+  // Profile / Goal state
   const [profileOpen, setProfileOpen] = useState(false);
   const [goalOpen, setGoalOpen] = useState(false);
-
-  // Profile form state
   const [height, setHeight] = useState(s.height.toString());
   const [age, setAge] = useState(s.age.toString());
   const [gender, setGender] = useState<'male' | 'female'>(s.gender);
   const [startWeight, setStartWeight] = useState(s.startWeight.toString());
-
-  // Goal form state
   const [targetCal, setTargetCal] = useState(s.targetCal.toString());
   const [targetP, setTargetP] = useState(s.targetP.toString());
   const [targetF, setTargetF] = useState(s.targetF.toString());
   const [targetC, setTargetC] = useState(s.targetC.toString());
   const [targetWeight, setTargetWeight] = useState(s.targetWeight?.toString() ?? '');
   const [targetBodyfat, setTargetBodyfat] = useState(s.targetBodyfat?.toString() ?? '');
+
+  // Export state
+  const [exportOpen, setExportOpen] = useState(false);
+  const [inclExercise, setInclExercise] = useState(true);
+  const [inclMeals, setInclMeals] = useState(false);
+  const [inclBody, setInclBody] = useState(false);
+  const [inclHealth, setInclHealth] = useState(false);
+  const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('today');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+  const [exportText, setExportText] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const bmr = calcBMR(s, s.startWeight);
   const bmi = calcBMI(s.startWeight, s.height);
@@ -65,6 +181,54 @@ export default function SettingsTab({ data, onDataChange }: Props) {
     setTargetBodyfat(s.targetBodyfat?.toString() ?? '');
     setGoalOpen(true);
   };
+
+  const generate = () => {
+    const today = new Date();
+    const todayKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+    let dks: string[] = [];
+    if (period === 'today') {
+      dks = [todayKey];
+    } else if (period === 'week') {
+      const d = new Date(today);
+      const dow = d.getDay();
+      d.setDate(d.getDate() - (dow === 0 ? 6 : dow - 1));
+      const mondayKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      dks = buildDateRange(mondayKey, todayKey);
+    } else if (period === 'month') {
+      const firstKey = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+      dks = buildDateRange(firstKey, todayKey);
+    } else if (period === 'custom' && customStart && customEnd) {
+      dks = buildDateRange(customStart, customEnd);
+    }
+
+    setExportText(buildExportText(data, dks, {
+      exercise: inclExercise,
+      meals: inclMeals,
+      body: inclBody,
+      health: inclHealth,
+    }));
+    setCopied(false);
+  };
+
+  const handleCopy = async () => {
+    if (!exportText) return;
+    try {
+      await navigator.clipboard.writeText(exportText);
+    } catch {
+      const el = document.createElement('textarea');
+      el.value = exportText;
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const canGenerate = (inclExercise || inclMeals || inclBody || inclHealth) &&
+    (period !== 'custom' || (!!customStart && !!customEnd && customStart <= customEnd));
 
   return (
     <div className="space-y-4">
@@ -117,6 +281,22 @@ export default function SettingsTab({ data, onDataChange }: Props) {
               <div className="num text-sm font-semibold text-gray-800">{val}</div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Data export card */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-0.5">データ出力</div>
+            <div className="text-xs text-gray-400">記録をテキスト形式でコピー</div>
+          </div>
+          <button
+            onClick={() => { setExportText(''); setCopied(false); setExportOpen(true); }}
+            className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5"
+          >
+            <Download size={13} />出力
+          </button>
         </div>
       </div>
 
@@ -179,6 +359,106 @@ export default function SettingsTab({ data, onDataChange }: Props) {
             </div>
           </div>
           <button onClick={saveGoal} className="btn-primary w-full py-3">保存</button>
+        </div>
+      </BottomSheet>
+
+      {/* Export modal */}
+      <BottomSheet open={exportOpen} onClose={() => setExportOpen(false)} title="データ出力">
+        <div className="space-y-4">
+
+          {/* Content checkboxes */}
+          <div>
+            <div className="text-sm text-gray-600 mb-2">出力内容</div>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { label: '運動記録', val: inclExercise, set: setInclExercise },
+                { label: '食事記録', val: inclMeals, set: setInclMeals },
+                { label: '体重・体脂肪', val: inclBody, set: setInclBody },
+                { label: '体調', val: inclHealth, set: setInclHealth },
+              ] as const).map(({ label, val, set }) => (
+                <button
+                  key={label}
+                  onClick={() => set(!val)}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm font-medium ${val ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600 bg-white'}`}
+                >
+                  <span className={`w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0 ${val ? 'border-white bg-white/20' : 'border-gray-300'}`}>
+                    {val && <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 10 10"><path d="M1.5 5L4 7.5L8.5 2.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                  </span>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Period selection */}
+          <div>
+            <div className="text-sm text-gray-600 mb-2">期間</div>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { label: '今日', val: 'today' },
+                { label: '今週（月〜今日）', val: 'week' },
+                { label: '今月（1日〜今日）', val: 'month' },
+                { label: '期間指定', val: 'custom' },
+              ] as const).map(({ label, val }) => (
+                <button
+                  key={val}
+                  onClick={() => setPeriod(val)}
+                  className={`py-2.5 rounded-xl border text-sm font-medium ${period === val ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600 bg-white'}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            {period === 'custom' && (
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="date"
+                  value={customStart}
+                  onChange={e => setCustomStart(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
+                />
+                <span className="text-gray-400 text-sm flex-shrink-0">〜</span>
+                <input
+                  type="date"
+                  value={customEnd}
+                  onChange={e => setCustomEnd(e.target.value)}
+                  className="flex-1 border border-gray-200 rounded-xl px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Generate */}
+          <button
+            onClick={generate}
+            disabled={!canGenerate}
+            className="btn-primary w-full py-3 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            テキスト生成
+          </button>
+
+          {/* Preview + Copy */}
+          {exportText && (
+            <>
+              <textarea
+                readOnly
+                value={exportText}
+                className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-mono bg-gray-50 focus:outline-none resize-none"
+                rows={8}
+              />
+              <button
+                onClick={handleCopy}
+                className={`w-full py-3 rounded-xl border text-sm font-semibold flex items-center justify-center gap-2 transition-colors ${
+                  copied
+                    ? 'bg-[#12b76a] text-white border-[#12b76a]'
+                    : 'bg-white border-gray-200 text-gray-700 active:bg-gray-50'
+                }`}
+              >
+                {copied ? <><Check size={16} />コピーしました</> : 'テキストをコピー'}
+              </button>
+            </>
+          )}
+
         </div>
       </BottomSheet>
     </div>
