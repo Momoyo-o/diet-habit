@@ -9,6 +9,10 @@ type Props = {
   dateKey: string;
   data: AppData;
   onDataChange: (d: AppData) => void;
+  bodyTrigger?: number;
+  mealTrigger?: number;
+  exTrigger?: number;
+  healthTrigger?: number;
 };
 
 // ─── Set helpers ─────────────────────────────────────────────────────────────
@@ -937,17 +941,24 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
 function HealthSection({ log, dateKey, data, onDataChange, trigger }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void; trigger?: number }) {
   const [sleepOpen, setSleepOpen] = useState(false);
   const [bowelOpen, setBowelOpen] = useState(false);
+  const [combinedOpen, setCombinedOpen] = useState(false);
   const [sleepVal, setSleepVal] = useState('');
   const [bowelVal, setBowelVal] = useState('');
+  const sleepPresets = ['5h', '5.5h', '6h', '6.5h', '7h', '7.5h', '8h', '8.5h', '9h'];
+  const bowelPresets = ['あり', 'なし', '2回以上'];
 
   useEffect(() => {
     if (!trigger) return;
     setSleepVal(log.sleep ?? '');
-    setSleepOpen(true);
+    setBowelVal(log.bowel ?? '');
+    setCombinedOpen(true);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger]);
-  const sleepPresets = ['5h', '5.5h', '6h', '6.5h', '7h', '7.5h', '8h', '8.5h', '9h'];
-  const bowelPresets = ['あり', 'なし', '2回以上'];
+
+  const saveCombined = () => {
+    onDataChange(setDayLog(data, dateKey, { ...log, sleep: sleepVal || null, bowel: bowelVal || null }));
+    setCombinedOpen(false);
+  };
 
   return (
     <>
@@ -970,6 +981,8 @@ function HealthSection({ log, dateKey, data, onDataChange, trigger }: { log: Day
           </button>
         </div>
       </div>
+
+      {/* 睡眠モーダル（カードタップ用） */}
       <BottomSheet open={sleepOpen} onClose={() => setSleepOpen(false)} title="睡眠を記録">
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2">
@@ -981,6 +994,8 @@ function HealthSection({ log, dateKey, data, onDataChange, trigger }: { log: Day
           <button onClick={() => { onDataChange(setDayLog(data, dateKey, { ...log, sleep: sleepVal })); setSleepOpen(false); }} className="btn-primary w-full py-3">保存</button>
         </div>
       </BottomSheet>
+
+      {/* 排便モーダル（カードタップ用） */}
       <BottomSheet open={bowelOpen} onClose={() => setBowelOpen(false)} title="排便を記録">
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2">
@@ -989,6 +1004,36 @@ function HealthSection({ log, dateKey, data, onDataChange, trigger }: { log: Day
             ))}
           </div>
           <button onClick={() => { onDataChange(setDayLog(data, dateKey, { ...log, bowel: bowelVal })); setBowelOpen(false); }} className="btn-primary w-full py-3">保存</button>
+        </div>
+      </BottomSheet>
+
+      {/* 体調まとめモーダル（クイックバー 体調ボタン用） */}
+      <BottomSheet open={combinedOpen} onClose={() => setCombinedOpen(false)} title="体調を記録">
+        <div className="space-y-5">
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Moon size={14} className="text-indigo-400" />
+              <span className="text-sm font-semibold text-gray-700">睡眠</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 mb-2">
+              {sleepPresets.map(s => (
+                <button key={s} onClick={() => setSleepVal(s)} className={`py-2 rounded-xl border text-sm font-medium ${sleepVal === s ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>{s}</button>
+              ))}
+            </div>
+            <input type="text" value={sleepVal} onChange={e => setSleepVal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 6.5h" />
+          </div>
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
+              <Droplets size={14} className="text-blue-400" />
+              <span className="text-sm font-semibold text-gray-700">排便</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              {bowelPresets.map(b => (
+                <button key={b} onClick={() => setBowelVal(b)} className={`py-2 rounded-xl border text-sm font-medium ${bowelVal === b ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>{b}</button>
+              ))}
+            </div>
+          </div>
+          <button onClick={saveCombined} className="btn-primary w-full py-3">保存</button>
         </div>
       </BottomSheet>
     </>
@@ -1024,14 +1069,8 @@ function MemoSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
-export default function TodayTab({ dateKey, data, onDataChange }: Props) {
-  const [bodyTrigger, setBodyTrigger] = useState(0);
-  const [mealTrigger, setMealTrigger] = useState(0);
-  const [exTrigger, setExTrigger] = useState(0);
-  const [healthTrigger, setHealthTrigger] = useState(0);
-
+export default function TodayTab({ dateKey, data, onDataChange, bodyTrigger = 0, mealTrigger = 0, exTrigger = 0, healthTrigger = 0 }: Props) {
   const log = getDayLog(data, dateKey);
-
   return (
     <div>
       {log.eatingOut && (
@@ -1049,22 +1088,6 @@ export default function TodayTab({ dateKey, data, onDataChange }: Props) {
       <ExerciseSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} trigger={exTrigger} />
       <HealthSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} trigger={healthTrigger} />
       <MemoSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} />
-      <div className="h-16" />
-
-      {/* Quick input bar */}
-      <div className="fixed bottom-14 left-1/2 -translate-x-1/2 w-full max-w-[420px] bg-white border-t border-gray-200 z-30 flex">
-        {([
-          { emoji: '⚖️', label: '体重', onClick: () => setBodyTrigger(t => t + 1) },
-          { emoji: '🍽️', label: '食事', onClick: () => setMealTrigger(t => t + 1) },
-          { emoji: '🏋️', label: '運動', onClick: () => setExTrigger(t => t + 1) },
-          { emoji: '😴', label: '体調', onClick: () => setHealthTrigger(t => t + 1) },
-        ] as const).map(({ emoji, label, onClick }) => (
-          <button key={label} onClick={onClick} className="flex-1 flex flex-col items-center py-2 gap-0.5 active:bg-gray-50">
-            <span className="text-xl leading-none">{emoji}</span>
-            <span className="text-[10px] font-medium text-gray-500">{label}</span>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

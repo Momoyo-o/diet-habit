@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { format, addDays, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
-import { ChevronLeft, ChevronRight, Utensils, BarChart2, CalendarDays, Settings as SettingsIcon, ClipboardList, Leaf } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Utensils, BarChart2, CalendarDays, Settings as SettingsIcon, ClipboardList, Leaf, Scale, Heart, Dumbbell } from 'lucide-react';
 import { AppData } from './types';
 import { loadData, saveData, getDayLog, setDayLog } from './store';
 import TodayTab from './components/TodayTab';
@@ -19,6 +19,10 @@ export default function App() {
   const [tab, setTab] = useState<Tab>('today');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [data, setData] = useState<AppData>(() => loadData());
+  const [bodyTrigger, setBodyTrigger] = useState(0);
+  const [mealTrigger, setMealTrigger] = useState(0);
+  const [exTrigger, setExTrigger] = useState(0);
+  const [healthTrigger, setHealthTrigger] = useState(0);
 
   const dateKey = dateKeyFor(currentDate);
   const todayKey = dateKeyFor(new Date());
@@ -103,12 +107,28 @@ export default function App() {
               </button>
             ))}
           </div>
+          {/* Quick input bar — Today tab only */}
+          {tab === 'today' && (
+            <div className="border-t border-gray-100 flex">
+              {[
+                { Icon: Scale,    label: '体重', action: () => setBodyTrigger(n => n + 1) },
+                { Icon: Utensils, label: '食事', action: () => setMealTrigger(n => n + 1) },
+                { Icon: Dumbbell, label: '運動', action: () => setExTrigger(n => n + 1) },
+                { Icon: Heart,    label: '体調', action: () => setHealthTrigger(n => n + 1) },
+              ].map(({ Icon, label, action }) => (
+                <button key={label} onClick={action} className="flex-1 flex flex-col items-center py-1.5 gap-0.5 active:bg-gray-50">
+                  <Icon size={16} className="text-gray-500" />
+                  <span className="text-[9px] text-gray-400">{label}</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Main content */}
         <main className="flex-1 px-3 py-3 pb-24 overflow-y-auto">
           {tab === 'today' && (
-            <TodayTab dateKey={dateKey} data={data} onDataChange={handleDataChange} />
+            <TodayTab dateKey={dateKey} data={data} onDataChange={handleDataChange} bodyTrigger={bodyTrigger} mealTrigger={mealTrigger} exTrigger={exTrigger} healthTrigger={healthTrigger} />
           )}
           {tab === 'graph' && (
             <GraphTab data={data} dateKey={dateKey} />
