@@ -81,8 +81,19 @@ export default function App() {
               <button onClick={goBack} className="p-1.5 rounded-lg hover:bg-gray-100">
                 <ChevronLeft size={18} className="text-gray-600" />
               </button>
-              <div className="flex-1 bg-blue-50 rounded-xl py-1.5 text-center text-sm font-semibold text-[#3b6ef5]">
-                {dateLabel}
+              {/* 日付ラベル — タップでネイティブ日付ピッカーを開く */}
+              <div className="flex-1 relative">
+                <div className="bg-blue-50 rounded-xl py-1.5 text-center text-sm font-semibold text-[#3b6ef5]">
+                  {dateLabel}
+                </div>
+                <input
+                  type="date"
+                  value={dateKey}
+                  max={todayKey}
+                  aria-label="日付を選択"
+                  onChange={e => { if (e.target.value) setCurrentDate(new Date(e.target.value + 'T00:00:00')); }}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
               </div>
               <button
                 onClick={goForward}
@@ -111,12 +122,12 @@ export default function App() {
           {tab === 'today' && (
             <div className="border-t border-gray-100 flex">
               {[
-                { Icon: Scale,    label: '体重', action: () => setBodyTrigger(n => n + 1) },
-                { Icon: Utensils, label: '食事', action: () => setMealTrigger(n => n + 1) },
-                { Icon: Dumbbell, label: '運動', action: () => setExTrigger(n => n + 1) },
-                { Icon: Heart,    label: '体調', action: () => setHealthTrigger(n => n + 1) },
-              ].map(({ Icon, label, action }) => (
-                <button key={label} onClick={action} className="flex-1 flex flex-col items-center py-1.5 gap-0.5 active:bg-gray-50">
+                { Icon: Scale,    label: '体重', action: () => setBodyTrigger(n => n + 1), off: false },
+                { Icon: Utensils, label: '食事', action: () => setMealTrigger(n => n + 1), off: log.eatingOut },
+                { Icon: Dumbbell, label: '運動', action: () => setExTrigger(n => n + 1), off: false },
+                { Icon: Heart,    label: '体調', action: () => setHealthTrigger(n => n + 1), off: false },
+              ].map(({ Icon, label, action, off }) => (
+                <button key={label} onClick={action} disabled={off} className={`flex-1 flex flex-col items-center py-1.5 gap-0.5 ${off ? 'opacity-30' : 'active:bg-gray-50'}`}>
                   <Icon size={16} className="text-gray-500" />
                   <span className="text-[9px] text-gray-400">{label}</span>
                 </button>
@@ -131,7 +142,7 @@ export default function App() {
             <TodayTab dateKey={dateKey} data={data} onDataChange={handleDataChange} bodyTrigger={bodyTrigger} mealTrigger={mealTrigger} exTrigger={exTrigger} healthTrigger={healthTrigger} />
           )}
           {tab === 'graph' && (
-            <GraphTab data={data} dateKey={dateKey} />
+            <GraphTab data={data} dateKey={todayKey} />
           )}
           {tab === 'review' && (
             <ReviewTab data={data} dateKey={dateKey} onDataChange={handleDataChange} />

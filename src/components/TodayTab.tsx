@@ -615,7 +615,11 @@ function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: {
       <div className="mb-3">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">食事</span>
-          <button className="btn-primary text-xs py-1 px-3" onClick={() => setOpen(true)}>＋ 追加</button>
+          <button
+            disabled={eatingOut}
+            onClick={() => setOpen(true)}
+            className={`text-xs py-1 px-3 ${eatingOut ? 'bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed' : 'btn-primary'}`}
+          >＋ 追加</button>
         </div>
         {log.meals.length === 0 ? (
           <div className="card text-center text-sm text-gray-400 py-4">記録なし</div>
@@ -1081,15 +1085,16 @@ export default function TodayTab({ dateKey, data, onDataChange, bodyTrigger = 0,
   const log = getDayLog(data, dateKey);
   return (
     <div>
-      {log.eatingOut && (
+      {log.eatingOut ? (
         <div className="card mb-3 bg-amber-50 border-amber-200">
           <div className="flex items-center gap-2">
             <Store size={20} className="text-amber-600 flex-shrink-0" />
-            <div className="text-sm font-medium text-amber-700">外食モード — 概算値を表示しています</div>
+            <div className="text-sm font-medium text-amber-700">外食モード — カロリー集計を除外しています</div>
           </div>
         </div>
+      ) : (
+        <CalSummaryCard log={log} settings={data.settings} />
       )}
-      <CalSummaryCard log={log} settings={data.settings} eatingOut={log.eatingOut} />
       <BodyCard log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} trigger={bodyTrigger} />
       <WeekMenuCard dateKey={dateKey} data={data} onDataChange={onDataChange} />
       <MealSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} eatingOut={log.eatingOut} trigger={mealTrigger} />
