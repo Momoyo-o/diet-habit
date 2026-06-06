@@ -711,6 +711,18 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger]);
 
+  const [editMemoId, setEditMemoId] = useState<number | string | null>(null);
+  const [editMemoText, setEditMemoText] = useState('');
+
+  const saveMemo = () => {
+    if (editMemoId === null) return;
+    const newExercises = log.exercises.map(e =>
+      e.id === editMemoId ? { ...e, userMemo: editMemoText } : e
+    );
+    onDataChange(setDayLog(data, dateKey, { ...log, exercises: newExercises }));
+    setEditMemoId(null);
+  };
+
   const add = () => {
     if (!name) return;
     const entry: ExerciseEntry = {
@@ -802,11 +814,18 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
                     {ex.fromMenu && <span className="ml-1.5 text-xs text-[#3b6ef5] bg-blue-50 px-1.5 py-0.5 rounded-full">メニュー</span>}
                   </div>
                   {subLabel(ex) && <div className="text-xs text-gray-400 mt-0.5">{subLabel(ex)}</div>}
+                  {ex.userMemo && <div className="text-xs text-[#3b6ef5] mt-0.5">{ex.userMemo}</div>}
                 </div>
                 <div className="flex items-center gap-2">
                   {ex.burnCal > 0 && (
                     <span className="num text-sm font-semibold text-[#12b76a]">-{ex.burnCal} kcal</span>
                   )}
+                  <button
+                    onClick={() => { setEditMemoId(ex.id); setEditMemoText(ex.userMemo ?? ''); }}
+                    className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200"
+                  >
+                    <Pencil size={14} className={ex.userMemo ? 'text-[#3b6ef5]' : 'text-gray-400'} />
+                  </button>
                   <button onClick={() => remove(ex.id)} className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200">
                     <X size={14} className="text-gray-500" />
                   </button>
@@ -943,6 +962,20 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
           )}
 
           <button onClick={add} className="btn-primary w-full py-3">追加</button>
+        </div>
+      </BottomSheet>
+
+      {/* メモ編集モーダル */}
+      <BottomSheet open={editMemoId !== null} onClose={() => setEditMemoId(null)} title="メモを編集">
+        <div className="space-y-4">
+          <input
+            type="text"
+            value={editMemoText}
+            onChange={e => setEditMemoText(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
+            placeholder="例: フォームを意識、手幅広め"
+          />
+          <button onClick={saveMemo} className="btn-primary w-full py-3">保存</button>
         </div>
       </BottomSheet>
     </>

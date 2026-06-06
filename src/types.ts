@@ -26,6 +26,7 @@ export type ExerciseEntry = {
   duration: number | null;
   burnCal: number;
   memo: string;
+  userMemo?: string;
   fromMenu?: boolean;
 };
 
