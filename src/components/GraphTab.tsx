@@ -110,7 +110,8 @@ export default function GraphTab({ data, dateKey }: Props) {
         weight: log.body?.weight ?? null,
         bodyfat: log.body?.bodyfat ?? null,
         netCal: totalCal > 0 || burnCal > 0 ? netCal : null,
-        isOver: totalCal > 0 && netCal > data.settings.targetCal,
+        isOver: !log.eatingOut && totalCal > 0 && netCal > data.settings.targetCal,
+        eatingOut: log.eatingOut,
       };
     });
   }, [data, dateKey, days]);
@@ -133,7 +134,7 @@ export default function GraphTab({ data, dateKey }: Props) {
 
   const weightData = points.map(p => ({ label: p.label, weight: p.weight }));
   const bodyfatData = points.map(p => ({ label: p.label, bodyfat: p.bodyfat }));
-  const calData = points.map(p => ({ label: p.label, cal: p.netCal, isOver: p.isOver }));
+  const calData = points.map(p => ({ label: p.label, cal: p.netCal, isOver: p.isOver, eatingOut: p.eatingOut }));
 
   const { targetWeight, targetBodyfat } = data.settings;
 
@@ -232,11 +233,23 @@ export default function GraphTab({ data, dateKey }: Props) {
             <ReferenceLine y={data.settings.targetCal} stroke="#f59e0b" strokeDasharray="4 4" label={{ value: '目標', fontSize: 10, fill: '#f59e0b' }} />
             <Bar dataKey="cal" radius={[4, 4, 0, 0]}>
               {calData.map((entry, i) => (
-                <Cell key={i} fill={entry.isOver ? '#ef4444' : '#3b6ef5'} />
+                <Cell key={i} fill={entry.eatingOut ? '#f59e0b' : entry.isOver ? '#ef4444' : '#3b6ef5'} />
               ))}
             </Bar>
           </BarChart>
         </ResponsiveContainer>
+        <div className="flex gap-4 mt-2 justify-center">
+          {[
+            { color: 'bg-[#3b6ef5]', label: '通常' },
+            { color: 'bg-red-400',   label: '目標超過' },
+            { color: 'bg-amber-400', label: '🍽 外食' },
+          ].map(({ color, label }) => (
+            <div key={label} className="flex items-center gap-1">
+              <div className={`w-2.5 h-2.5 rounded-sm ${color}`} />
+              <span className="text-xs text-gray-500">{label}</span>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Monthly Calendar */}

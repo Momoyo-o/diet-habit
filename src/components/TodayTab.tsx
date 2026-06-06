@@ -592,7 +592,7 @@ function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: {
   }, [trigger]);
 
   const add = () => {
-    if (!cal) return;
+    if (!eatingOut && !cal) return;
     const entry: MealEntry = {
       id: Date.now(),
       name,
@@ -650,18 +650,26 @@ function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: {
               {MEAL_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
-          <div>
-            <label className="text-sm text-gray-600 block mb-1">カロリー (kcal)</label>
-            <input type="number" value={cal} onChange={e => setCal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 650" />
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {[{ label: 'P (g)', val: p, set: setP }, { label: 'F (g)', val: f, set: setF }, { label: 'C (g)', val: c, set: setC }].map(({ label, val, set }) => (
-              <div key={label}>
-                <label className="text-xs text-gray-500 block mb-1">{label}</label>
-                <input type="number" step="0.1" value={val} onChange={e => set(e.target.value)} className="w-full border border-gray-200 rounded-xl px-2 py-2 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="0" />
+          {eatingOut ? (
+            <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+              外食のため詳細入力なし（カロリー・PFC は 0 で記録されます）
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">カロリー (kcal)</label>
+                <input type="number" value={cal} onChange={e => setCal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-base num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 650" />
               </div>
-            ))}
-          </div>
+              <div className="grid grid-cols-3 gap-2">
+                {[{ label: 'P (g)', val: p, set: setP }, { label: 'F (g)', val: f, set: setF }, { label: 'C (g)', val: c, set: setC }].map(({ label, val, set }) => (
+                  <div key={label}>
+                    <label className="text-xs text-gray-500 block mb-1">{label}</label>
+                    <input type="number" step="0.1" value={val} onChange={e => set(e.target.value)} className="w-full border border-gray-200 rounded-xl px-2 py-2 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="0" />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
           <button onClick={add} className="btn-primary w-full py-3">追加</button>
         </div>
       </BottomSheet>

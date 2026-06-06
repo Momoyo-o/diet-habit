@@ -77,10 +77,10 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
   const summary = useMemo(() => {
     const weights = days.map(d => d.log.body?.weight).filter((w): w is number => w !== undefined && w !== null);
     const weightChange = weights.length >= 2 ? Math.round((weights[weights.length - 1] - weights[0]) * 10) / 10 : null;
-    const cals = days.map(d => d.netCal).filter((c): c is number => c !== null);
+    const eatOut = days.filter(d => d.log.eatingOut).length;
+    const cals = days.filter(d => !d.log.eatingOut).map(d => d.netCal).filter((c): c is number => c !== null);
     const avgCal = cals.length > 0 ? Math.round(cals.reduce((s, c) => s + c, 0) / cals.length) : null;
     const gymDays = days.reduce((s, d) => s + (d.gymCount > 0 ? 1 : 0), 0);
-    const eatOut = days.filter(d => d.log.eatingOut).length;
     const recordDays = days.filter(d => d.hasRecord).length;
     return { weightChange, avgCal, gymDays, eatOut, recordDays };
   }, [days]);
@@ -104,7 +104,7 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
     return { week: weekVol, month: monthVol, total: totalVol };
   }, [data, days, monday]);
 
-  const calData = days.map(d => ({ dow: d.dow, cal: d.netCal, isOver: d.netCal !== null && d.netCal > data.settings.targetCal }));
+  const calData = days.map(d => ({ dow: d.dow, cal: d.netCal, isOver: !d.log.eatingOut && d.netCal !== null && d.netCal > data.settings.targetCal, eatingOut: d.log.eatingOut }));
   const weekMemo = data.weekMemos[mondayKey] ?? '';
 
   const saveMemo = () => {
@@ -136,15 +136,16 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
         <div className="text-sm font-semibold text-gray-700 mb-3">週次サマリー</div>
         <div className="grid grid-cols-2 gap-3">
           {[
-            { label: '体重変化', val: summary.weightChange !== null ? `${summary.weightChange > 0 ? '+' : ''}${summary.weightChange} kg` : '—', color: summary.weightChange !== null ? (summary.weightChange > 0 ? 'text-red-500' : 'text-[#12b76a]') : '' },
-            { label: '平均摂取カロリー', val: summary.avgCal !== null ? `${summary.avgCal} kcal` : '—', color: '' },
-            { label: 'ジム回数', val: `${summary.gymDays} 日`, color: '' },
-            { label: '外食日数', val: `${summary.eatOut} 日`, color: '' },
-            { label: '記録日数', val: `${summary.recordDays} / 7 日`, color: '' },
-          ].map(({ label, val, color }) => (
+            { label: '体重変化', val: summary.weightChange !== null ? `${summary.weightChange > 0 ? '+' : ''}${summary.weightChange} kg` : '—', color: summary.weightChange !== null ? (summary.weightChange > 0 ? 'text-red-500' : 'text-[#12b76a]') : '', sub: '' },
+            { label: '平均摂取カロリー', val: summary.avgCal !== null ? `${summary.avgCal} kcal` : '—', color: '', sub: summary.eatOut > 0 ? `外食 ${summary.eatOut} 日除く` : '' },
+            { label: 'ジム回数', val: `${summary.gymDays} 日`, color: '', sub: '' },
+            { label: '外食日数', val: `${summary.eatOut} 日`, color: '', sub: '' },
+            { label: '記録日数', val: `${summary.recordDays} / 7 日`, color: '', sub: '' },
+          ].map(({ label, val, color, sub }) => (
             <div key={label} className="bg-gray-50 rounded-xl p-3">
               <div className="text-xs text-gray-400 mb-1">{label}</div>
               <div className={`num text-lg font-bold text-gray-900 ${color}`}>{val}</div>
+              {sub && <div className="text-xs text-amber-600 mt-0.5">{sub}</div>}
             </div>
           ))}
         </div>
@@ -208,7 +209,7 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
             <ReferenceLine y={data.settings.targetCal} stroke="#f59e0b" strokeDasharray="4 4" />
             <Bar dataKey="cal" radius={[4, 4, 0, 0]}>
               {calData.map((entry, i) => (
-                <Cell key={i} fill={entry.isOver ? '#ef4444' : '#3b6ef5'} />
+                <Cell key={i} fill={entry.eatingOut ? '#f59e0b' : entry.isOver ? '#ef4444' : '#3b6ef5'} />
               ))}
             </Bar>
           </BarChart>
