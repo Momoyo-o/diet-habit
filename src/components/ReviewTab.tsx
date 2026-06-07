@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight, Pencil, Moon, Droplets, Car, Bus, Plane } from 'lucide-react';
-import { format, startOfWeek, addWeeks, addDays } from 'date-fns';
-import { ja } from 'date-fns/locale';
+import { Pencil, Moon, Droplets, Car, Bus, Plane } from 'lucide-react';
+import { startOfWeek, addDays } from 'date-fns';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, ResponsiveContainer, Cell } from 'recharts';
 import { AppData, DayLog } from '../types';
 import { getDayLog } from '../store';
@@ -17,7 +16,6 @@ function dateKeyFor(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
-// Total training volume (kg) for a single day
 function calcLogVolume(log: DayLog): number {
   return log.exercises
     .filter(e => e.subType === 'strength')
@@ -29,40 +27,20 @@ function calcLogVolume(log: DayLog): number {
     }, 0);
 }
 
-const VEHICLES = [
-  { label: '飛行機', unitKg: 300_000, Icon: Plane },
-  { label: 'バス',   unitKg:  10_000, Icon: Bus },
-  { label: '軽自動車', unitKg:    700, Icon: Car },
-] as const;
-
-function getBestVehicle(kg: number) {
-  for (const v of VEHICLES) {
-    const ratio = kg / v.unitKg;
-    if (ratio >= 1) return { ...v, ratio: Math.round(ratio * 10) / 10 };
-  }
-  return null;
-}
-
 const DOW = ['月', '火', '水', '木', '金', '土', '日'];
 
 export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
-  const [weekOffset, setWeekOffset] = useState(0);
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoText, setMemoText] = useState('');
-  const [volumeTab, setVolumeTab] = useState<'week' | 'month' | 'total'>('week');
 
-  const baseDate = new Date(dateKey);
-  const monday = addWeeks(startOfWeek(baseDate, { weekStartsOn: 1 }), weekOffset);
+  const monday = startOfWeek(new Date(dateKey), { weekStartsOn: 1 });
   const mondayKey = dateKeyFor(monday);
 
-  const weekLabel = useMemo(() => {
-    const sun = addDays(monday, 6);
-    return `${format(monday, 'M/d', { locale: ja })} 〜 ${format(sun, 'M/d', { locale: ja })}`;
-  }, [monday]);
-
+  // 今週7日分（カロリーグラフ・睡眠排便テーブル用）
   const days = useMemo(() => {
+    const mon = startOfWeek(new Date(dateKey), { weekStartsOn: 1 });
     return Array.from({ length: 7 }, (_, i) => {
-      const d = addDays(monday, i);
+      const d = addDays(mon, i);
       const key = dateKeyFor(d);
       const log = getDayLog(data, key);
       const totalCal = log.meals.reduce((s, m) => s + m.cal, 0);
@@ -72,25 +50,61 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
       const gymCount = log.exercises.filter(e => e.type === 'gym').length;
       return { key, log, netCal, hasRecord, gymCount, dow: DOW[i] };
     });
-  }, [data, monday]);
+  }, [data, dateKey]);
 
-  const summary = useMemo(() => {
-    const weights = days.map(d => d.log.body?.weight).filter((w): w is number => w !== undefined && w !== null);
-    const weightChange = weights.length >= 2 ? Math.round((weights[weights.length - 1] - weights[0]) * 10) / 10 : null;
-    const eatOut = days.filter(d => d.log.eatingOut).length;
-    const cals = days.filter(d => !d.log.eatingOut).map(d => d.netCal).filter((c): c is number => c !== null);
-    const avgCal = cals.length > 0 ? Math.round(cals.reduce((s, c) => s + c, 0) / cals.length) : null;
-    const gymDays = days.reduce((s, d) => s + (d.gymCount > 0 ? 1 : 0), 0);
-    const recordDays = days.filter(d => d.hasRecord).length;
-    return { weightChange, avgCal, gymDays, eatOut, recordDays };
-  }, [days]);
+  // ── 全期間サマリー ────────────────────────────────────────────────────────────
+  const allTimeSummary = useMemo(() => {
+    const allEntries = Object.entries(data.logs);
+    if (allEntries.length === 0) return null;
 
+    const sortedKeys = allEntries.map(([k]) => k).sort();
+    const startDate = sortedKeys[0];
+
+    const totalRecords = allEntries.filter(([, log]) =>
+      log.body !== null || log.meals.length > 0 || log.exercises.length > 0
+    ).length;
+
+    let startWeight: number | null = null;
+    for (const key of sortedKeys) {
+      const w = data.logs[key].body?.weight;
+      if (w != null) { startWeight = w; break; }
+    }
+    let currentWeight: number | null = null;
+    for (const key of [...sortedKeys].reverse()) {
+      const w = data.logs[key].body?.weight;
+      if (w != null) { currentWeight = w; break; }
+    }
+    const weightChange = startWeight != null && currentWeight != null
+      ? Math.round((currentWeight - startWeight) * 10) / 10
+      : null;
+
+    const eatOutDays = allEntries.filter(([, log]) => log.eatingOut).length;
+
+    const calList = allEntries
+      .filter(([, log]) => !log.eatingOut)
+      .map(([, log]) => {
+        const tc = log.meals.reduce((s, m) => s + m.cal, 0);
+        const bc = log.exercises.reduce((s, e) => s + e.burnCal, 0);
+        return tc > 0 || bc > 0 ? tc - bc : null;
+      })
+      .filter((c): c is number => c !== null);
+    const avgCal = calList.length > 0
+      ? Math.round(calList.reduce((s, c) => s + c, 0) / calList.length)
+      : null;
+
+    const gymDays = allEntries.filter(([, log]) =>
+      log.exercises.some(e => e.type === 'gym')
+    ).length;
+
+    return { startDate, totalRecords, startWeight, currentWeight, weightChange, avgCal, gymDays, eatOutDays };
+  }, [data]);
+
+  // ── 総負荷量 ──────────────────────────────────────────────────────────────────
   const volumeData = useMemo(() => {
     const weekVol = Math.round(days.reduce((s, d) => s + calcLogVolume(d.log), 0));
 
-    const year = monday.getFullYear();
-    const month = monday.getMonth();
-    const ym = `${year}-${String(month + 1).padStart(2, '0')}`;
+    const today = new Date(dateKey);
+    const ym = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
     const monthVol = Math.round(
       Object.entries(data.logs)
         .filter(([dk]) => dk.startsWith(ym))
@@ -102,9 +116,15 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
     );
 
     return { week: weekVol, month: monthVol, total: totalVol };
-  }, [data, days, monday]);
+  }, [data, days, dateKey]);
 
-  const calData = days.map(d => ({ dow: d.dow, cal: d.netCal, isOver: !d.log.eatingOut && d.netCal !== null && d.netCal > data.settings.targetCal, eatingOut: d.log.eatingOut }));
+  const calData = days.map(d => ({
+    dow: d.dow,
+    cal: d.netCal,
+    isOver: !d.log.eatingOut && d.netCal !== null && d.netCal > data.settings.targetCal,
+    eatingOut: d.log.eatingOut,
+  }));
+
   const weekMemo = data.weekMemos[mondayKey] ?? '';
 
   const saveMemo = () => {
@@ -112,94 +132,107 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
     setMemoOpen(false);
   };
 
-  const canGoNext = weekOffset < 0;
+  const ratioStr = (vol: number, unit: number) => {
+    const r = vol / unit;
+    return r < 0.1 ? '0.0' : (Math.round(r * 10) / 10).toFixed(1);
+  };
 
   return (
     <div className="space-y-4">
-      {/* Week navigator */}
-      <div className="flex items-center justify-between">
-        <button onClick={() => setWeekOffset(o => o - 1)} className="p-2 bg-white rounded-xl border border-gray-200 active:bg-gray-50">
-          <ChevronLeft size={18} className="text-gray-600" />
-        </button>
-        <span className="text-sm font-semibold text-gray-700">{weekLabel}</span>
-        <button
-          onClick={() => canGoNext && setWeekOffset(o => o + 1)}
-          disabled={!canGoNext}
-          className={`p-2 rounded-xl border ${canGoNext ? 'bg-white border-gray-200 active:bg-gray-50' : 'bg-gray-50 border-gray-100 opacity-40'}`}
-        >
-          <ChevronRight size={18} className="text-gray-400" />
-        </button>
+
+      {/* 全期間サマリー */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm font-semibold text-gray-700">全期間サマリー</span>
+          {allTimeSummary && (
+            <span className="text-xs text-gray-400">
+              {allTimeSummary.startDate.replace(/-/g, '/')} 〜 今日
+            </span>
+          )}
+        </div>
+
+        {allTimeSummary ? (
+          <div className="grid grid-cols-2 gap-3">
+            {([
+              {
+                label: '総記録日数',
+                val: `${allTimeSummary.totalRecords} 日`,
+                color: '',
+                sub: '',
+                subClass: '',
+              },
+              {
+                label: '体重変化',
+                val: allTimeSummary.weightChange !== null
+                  ? `${allTimeSummary.weightChange > 0 ? '+' : ''}${allTimeSummary.weightChange} kg`
+                  : '—',
+                color: allTimeSummary.weightChange !== null
+                  ? allTimeSummary.weightChange > 0 ? 'text-red-500' : 'text-[#12b76a]'
+                  : '',
+                sub: allTimeSummary.startWeight != null && allTimeSummary.currentWeight != null
+                  ? `${allTimeSummary.startWeight} → ${allTimeSummary.currentWeight} kg`
+                  : '',
+                subClass: 'text-gray-400',
+              },
+              {
+                label: '平均摂取カロリー',
+                val: allTimeSummary.avgCal !== null ? `${allTimeSummary.avgCal} kcal` : '—',
+                color: '',
+                sub: allTimeSummary.eatOutDays > 0 ? `外食 ${allTimeSummary.eatOutDays} 日除く` : '',
+                subClass: 'text-amber-600',
+              },
+              {
+                label: '総ジム回数',
+                val: `${allTimeSummary.gymDays} 日`,
+                color: '',
+                sub: '',
+                subClass: '',
+              },
+              {
+                label: '総外食日数',
+                val: `${allTimeSummary.eatOutDays} 日`,
+                color: '',
+                sub: '',
+                subClass: '',
+              },
+            ] as const).map(({ label, val, color, sub, subClass }) => (
+              <div key={label} className="bg-gray-50 rounded-xl p-3">
+                <div className="text-xs text-gray-400 mb-1">{label}</div>
+                <div className={`num text-lg font-bold text-gray-900 ${color}`}>{val}</div>
+                {sub && <div className={`text-xs mt-0.5 ${subClass}`}>{sub}</div>}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-sm text-gray-400 text-center py-4">記録がありません</div>
+        )}
       </div>
 
-      {/* Summary */}
+      {/* 総負荷量 — 3列同時表示 */}
       <div className="card">
-        <div className="text-sm font-semibold text-gray-700 mb-3">週次サマリー</div>
-        <div className="grid grid-cols-2 gap-3">
-          {[
-            { label: '体重変化', val: summary.weightChange !== null ? `${summary.weightChange > 0 ? '+' : ''}${summary.weightChange} kg` : '—', color: summary.weightChange !== null ? (summary.weightChange > 0 ? 'text-red-500' : 'text-[#12b76a]') : '', sub: '' },
-            { label: '平均摂取カロリー', val: summary.avgCal !== null ? `${summary.avgCal} kcal` : '—', color: '', sub: summary.eatOut > 0 ? `外食 ${summary.eatOut} 日除く` : '' },
-            { label: 'ジム回数', val: `${summary.gymDays} 日`, color: '', sub: '' },
-            { label: '外食日数', val: `${summary.eatOut} 日`, color: '', sub: '' },
-            { label: '記録日数', val: `${summary.recordDays} / 7 日`, color: '', sub: '' },
-          ].map(({ label, val, color, sub }) => (
-            <div key={label} className="bg-gray-50 rounded-xl p-3">
-              <div className="text-xs text-gray-400 mb-1">{label}</div>
-              <div className={`num text-lg font-bold text-gray-900 ${color}`}>{val}</div>
-              {sub && <div className="text-xs text-amber-600 mt-0.5">{sub}</div>}
+        <div className="text-sm font-semibold text-gray-700 mb-3">総負荷量</div>
+        <div className="grid grid-cols-3 gap-2">
+          {([
+            { label: '今週', vol: volumeData.week,  Icon: Car,   unit: 700 },
+            { label: '今月', vol: volumeData.month, Icon: Bus,   unit: 10_000 },
+            { label: '累計', vol: volumeData.total, Icon: Plane, unit: 300_000 },
+          ] as const).map(({ label, vol, Icon, unit }) => (
+            <div key={label} className="bg-gray-50 rounded-xl p-3 flex flex-col items-center">
+              <div className="text-xs text-gray-500 mb-1">{label}</div>
+              <div className="flex items-baseline gap-0.5 mb-2">
+                <span className="num text-base font-bold text-gray-900">{vol.toLocaleString()}</span>
+                <span className="text-xs text-gray-400">kg</span>
+              </div>
+              <Icon size={22} className="text-[#3b6ef5] mb-1" />
+              <div className="text-xs font-medium text-gray-600">×{ratioStr(vol, unit)}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Total volume */}
-      {(() => {
-        const currentVol = volumeTab === 'week' ? volumeData.week : volumeTab === 'month' ? volumeData.month : volumeData.total;
-        const vehicle = getBestVehicle(currentVol);
-        return (
-          <div className="card">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-semibold text-gray-700">総負荷量</span>
-              <div className="flex gap-1">
-                {(['week', 'month', 'total'] as const).map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setVolumeTab(tab)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-medium ${volumeTab === tab ? 'bg-[#3b6ef5] text-white' : 'bg-gray-100 text-gray-500'}`}
-                  >
-                    {tab === 'week' ? '今週' : tab === 'month' ? '今月' : '累計'}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="flex items-end gap-1.5 mb-3">
-              <span className="num text-4xl font-bold text-gray-900">{currentVol.toLocaleString()}</span>
-              <span className="text-sm text-gray-400 mb-1">kg</span>
-            </div>
-
-            {vehicle ? (
-              <div className="flex items-center gap-3 bg-indigo-50 rounded-xl p-3">
-                <vehicle.Icon size={28} className="text-[#3b6ef5]" />
-                <div>
-                  <div className="flex items-baseline gap-1">
-                    <span className="text-xs text-gray-500">×</span>
-                    <span className="num text-2xl font-bold text-gray-900">{vehicle.ratio}</span>
-                  </div>
-                  <div className="text-xs text-gray-400">{vehicle.label}換算</div>
-                </div>
-              </div>
-            ) : currentVol > 0 ? (
-              <div className="text-xs text-gray-400">軽自動車1台（700 kg）未満</div>
-            ) : (
-              <div className="text-xs text-gray-400">筋トレ記録がありません</div>
-            )}
-          </div>
-        );
-      })()}
-
-      {/* Calorie bar chart */}
+      {/* カロリー推移（今週） */}
       <div className="card">
-        <div className="text-sm font-semibold text-gray-700 mb-3">カロリー推移</div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">カロリー推移（今週）</div>
         <ResponsiveContainer width="100%" height={160}>
           <BarChart data={calData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -216,9 +249,9 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
         </ResponsiveContainer>
       </div>
 
-      {/* Sleep & Bowel */}
+      {/* 睡眠・排便（今週） */}
       <div className="card">
-        <div className="text-sm font-semibold text-gray-700 mb-3">睡眠・排便</div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">睡眠・排便（今週）</div>
         <div className="overflow-x-auto no-scrollbar">
           <table className="w-full text-sm text-center">
             <thead>
@@ -249,7 +282,7 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
         </div>
       </div>
 
-      {/* Week memo */}
+      {/* 週のメモ */}
       <div className="card">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-semibold text-gray-700">週のメモ</span>
@@ -257,12 +290,20 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
             <Pencil size={12} /> 編集
           </button>
         </div>
-        {weekMemo ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{weekMemo}</p> : <p className="text-sm text-gray-400">メモなし</p>}
+        {weekMemo
+          ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{weekMemo}</p>
+          : <p className="text-sm text-gray-400">メモなし</p>}
       </div>
 
       <BottomSheet open={memoOpen} onClose={() => setMemoOpen(false)} title="週のメモを編集">
         <div className="space-y-4">
-          <textarea value={memoText} onChange={e => setMemoText(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" rows={6} placeholder="今週の振り返りなど..." />
+          <textarea
+            value={memoText}
+            onChange={e => setMemoText(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
+            rows={6}
+            placeholder="今週の振り返りなど..."
+          />
           <button onClick={saveMemo} className="btn-primary w-full py-3">保存</button>
         </div>
       </BottomSheet>
