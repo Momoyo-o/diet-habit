@@ -96,7 +96,27 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
       log.exercises.some(e => e.type === 'gym')
     ).length;
 
-    return { startDate, totalRecords, startWeight, currentWeight, weightChange, avgCal, gymDays, eatOutDays };
+    // 食事スコア平均（外食日・食事記録なし日を除く）
+    const scoreDays = allEntries.filter(([, log]) => !log.eatingOut && log.meals.length > 0);
+    const avgScore = scoreDays.length > 0
+      ? Math.round(scoreDays.reduce((s, [, log]) => {
+          const tc = log.meals.reduce((x, m) => x + m.cal, 0);
+          const tp = log.meals.reduce((x, m) => x + m.p, 0);
+          const tf = log.meals.reduce((x, m) => x + m.f, 0);
+          const cc = log.meals.reduce((x, m) => x + m.c, 0);
+          const cp = tc / (data.settings.targetCal || 1);
+          const cs = (cp >= 0.9 && cp <= 1.1) ? 25 : ((cp >= 0.8 && cp < 0.9) || (cp > 1.1 && cp <= 1.2)) ? 15 : 5;
+          const pp = tp / (data.settings.targetP || 1);
+          const ps = pp >= 1.0 ? 35 : pp >= 0.9 ? 25 : pp >= 0.8 ? 15 : 5;
+          const fp = tf / (data.settings.targetF || 1);
+          const fs = fp <= 1.0 ? 20 : fp <= 1.1 ? 15 : fp <= 1.2 ? 10 : 5;
+          const ccp = cc / (data.settings.targetC || 1);
+          const ccs = (ccp >= 0.9 && ccp <= 1.1) ? 20 : ((ccp >= 0.8 && ccp < 0.9) || (ccp > 1.1 && ccp <= 1.2)) ? 12 : 5;
+          return s + cs + ps + fs + ccs;
+        }, 0) / scoreDays.length)
+      : null;
+
+    return { startDate, totalRecords, startWeight, currentWeight, weightChange, avgCal, gymDays, eatOutDays, avgScore };
   }, [data]);
 
   // ── 総負荷量 ──────────────────────────────────────────────────────────────────
@@ -195,6 +215,16 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
                 sub: '',
                 subClass: '',
               },
+              {
+                label: '平均食事スコア',
+                val: allTimeSummary.avgScore !== null ? `${allTimeSummary.avgScore} 点` : '—',
+                color: allTimeSummary.avgScore !== null
+                  ? allTimeSummary.avgScore >= 80 ? 'text-[#12b76a]'
+                  : allTimeSummary.avgScore >= 60 ? 'text-amber-500' : 'text-red-500'
+                  : '',
+                sub: '',
+                subClass: '',
+              },
             ] as const).map(({ label, val, color, sub, subClass }) => (
               <div key={label} className="bg-gray-50 rounded-xl p-3">
                 <div className="text-xs text-gray-400 mb-1">{label}</div>
@@ -229,6 +259,45 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
           ))}
         </div>
       </div>
+
+      {/* 部位別総負荷量（今月） */}
+      {(() => {
+        const today = new Date(dateKey);
+        const ym = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+        const PARTS = ['胸', '背中', '脚', '肩', '腕', '腹', '全身'];
+        const partVols: Record<string, number> = {};
+        PARTS.forEach(p => { partVols[p] = 0; });
+        Object.entries(data.logs)
+          .filter(([dk]) => dk.startsWith(ym))
+          .forEach(([, log]) => {
+            log.exercises.filter(e => e.subType === 'strength' && e.part && partVols[e.part] !== undefined).forEach(e => {
+              const v = e.setsDetail && e.setsDetail.length > 0
+                ? e.setsDetail.reduce((s, set) => s + (set.weight ?? 0) * (set.reps ?? 0), 0)
+                : (e.weight ?? 0) * (e.reps ?? 0) * (e.sets ?? 0);
+              partVols[e.part] += v;
+            });
+          });
+        const rows = PARTS.map(p => ({ part: p, vol: Math.round(partVols[p]) }));
+        const maxVol = Math.max(...rows.map(r => r.vol), 1);
+        const hasData = rows.some(r => r.vol > 0);
+        if (!hasData) return null;
+        return (
+          <div className="card">
+            <div className="text-sm font-semibold text-gray-700 mb-3">部位別総負荷量（今月）</div>
+            <div className="space-y-2">
+              {rows.map(({ part, vol }) => (
+                <div key={part} className="flex items-center gap-2">
+                  <div className="w-8 text-xs text-gray-500 text-right flex-shrink-0">{part}</div>
+                  <div className="flex-1 bg-gray-100 rounded-full h-3 overflow-hidden">
+                    <div className="h-full bg-[#3b6ef5] rounded-full" style={{ width: `${(vol / maxVol) * 100}%` }} />
+                  </div>
+                  <div className="w-20 text-xs text-right num text-gray-600 flex-shrink-0">{vol.toLocaleString()} kg</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* カロリー推移（今週） */}
       <div className="card">

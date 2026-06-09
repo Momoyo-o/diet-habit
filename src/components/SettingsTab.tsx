@@ -32,25 +32,30 @@ function buildDateRange(startDk: string, endDk: string): string[] {
   return result;
 }
 
-function fmtExercise(e: ExerciseEntry): string {
+function fmtExercise(e: ExerciseEntry, inclMemo = false): string {
   const name = e.part ? `${e.name}（${e.part}）` : e.name;
+  let base = '';
   if (e.subType === 'strength') {
     if (e.setsDetail && e.setsDetail.length > 0) {
       const sets = e.setsDetail
         .map(s => `${s.weight != null ? s.weight + 'kg' : ''}${s.reps != null ? '×' + s.reps : ''}`)
         .filter(Boolean)
         .join(', ');
-      return sets ? `${name}　${sets}` : name;
+      base = sets ? `${name}　${sets}` : name;
+    } else {
+      const detail = [
+        e.weight != null ? `${e.weight}kg` : null,
+        e.reps != null ? `×${e.reps}` : null,
+        e.sets != null ? `×${e.sets}セット` : null,
+      ].filter(Boolean).join('');
+      base = detail ? `${name}　${detail}` : name;
     }
-    const detail = [
-      e.weight != null ? `${e.weight}kg` : null,
-      e.reps != null ? `×${e.reps}` : null,
-      e.sets != null ? `×${e.sets}セット` : null,
-    ].filter(Boolean).join('');
-    return detail ? `${name}　${detail}` : name;
+  } else {
+    const extras = [e.duration != null ? `${e.duration}分` : null, e.memo || null].filter(Boolean).join('　');
+    base = extras ? `${name}　${extras}` : name;
   }
-  const extras = [e.duration != null ? `${e.duration}分` : null, e.memo || null].filter(Boolean).join('　');
-  return extras ? `${name}　${extras}` : name;
+  if (inclMemo && e.userMemo) base += `（${e.userMemo}）`;
+  return base;
 }
 
 function fmtMeal(m: MealEntry): string {
@@ -60,7 +65,7 @@ function fmtMeal(m: MealEntry): string {
 function buildExportText(
   data: AppData,
   dks: string[],
-  opts: { exercise: boolean; meals: boolean; body: boolean; health: boolean }
+  opts: { exercise: boolean; meals: boolean; body: boolean; health: boolean; exerciseMemo: boolean; trainingMemo: boolean; dailyMemo: boolean }
 ): string {
   const blocks = dks.map(dk => {
     const log = getDayLog(data, dk);
@@ -69,10 +74,14 @@ function buildExportText(
 
     if (opts.exercise) {
       if (log.exercises.length > 0) {
-        sections.push(`【運動】 ${log.exercises.map(fmtExercise).join(' ')}`);
+        sections.push(`【運動】 ${log.exercises.map(e => fmtExercise(e, opts.exerciseMemo)).join(' ')}`);
       } else {
         sections.push('【運動】 （記録なし）');
       }
+    }
+
+    if (opts.trainingMemo && log.trainingMemo) {
+      sections.push(`【トレーニングメモ】 ${log.trainingMemo}`);
     }
 
     if (opts.meals) {
@@ -101,9 +110,11 @@ function buildExportText(
     if (opts.health) {
       const parts: string[] = [];
       if (log.sleep) parts.push(`睡眠 ${log.sleep}`);
-      if (log.bowel) parts.push(`排便 ${log.bowel}`);
-      if (log.memo) parts.push(`メモ：${log.memo}`);
+      if (log.bowel && log.bowel !== 'なし') parts.push(`排便 ${log.bowel}`);
+      if (opts.dailyMemo && log.memo) parts.push(`メモ：${log.memo}`);
       sections.push(`【体調】 ${parts.length > 0 ? parts.join('　') : '（記録なし）'}`);
+    } else if (opts.dailyMemo && log.memo) {
+      sections.push(`【体調メモ】 ${log.memo}`);
     }
 
     if (sections.length === 0) return null;
@@ -137,6 +148,9 @@ export default function SettingsTab({ data, onDataChange }: Props) {
   const [inclMeals, setInclMeals] = useState(false);
   const [inclBody, setInclBody] = useState(false);
   const [inclHealth, setInclHealth] = useState(false);
+  const [inclExerciseMemo, setInclExerciseMemo] = useState(false);
+  const [inclTrainingMemo, setInclTrainingMemo] = useState(true);
+  const [inclDailyMemo, setInclDailyMemo] = useState(true);
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
@@ -207,6 +221,9 @@ export default function SettingsTab({ data, onDataChange }: Props) {
       meals: inclMeals,
       body: inclBody,
       health: inclHealth,
+      exerciseMemo: inclExerciseMemo,
+      trainingMemo: inclTrainingMemo,
+      dailyMemo: inclDailyMemo,
     }));
     setCopied(false);
   };
@@ -227,7 +244,7 @@ export default function SettingsTab({ data, onDataChange }: Props) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const canGenerate = (inclExercise || inclMeals || inclBody || inclHealth) &&
+  const canGenerate = (inclExercise || inclMeals || inclBody || inclHealth || inclTrainingMemo || inclDailyMemo) &&
     (period !== 'custom' || (!!customStart && !!customEnd && customStart <= customEnd));
 
   return (
@@ -370,12 +387,15 @@ export default function SettingsTab({ data, onDataChange }: Props) {
           <div>
             <div className="text-sm text-gray-600 mb-2">出力内容</div>
             <div className="grid grid-cols-2 gap-2">
-              {([
+              {[
                 { label: '運動記録', val: inclExercise, set: setInclExercise },
                 { label: '食事記録', val: inclMeals, set: setInclMeals },
                 { label: '体重・体脂肪', val: inclBody, set: setInclBody },
                 { label: '体調', val: inclHealth, set: setInclHealth },
-              ] as const).map(({ label, val, set }) => (
+                { label: '体調メモ', val: inclDailyMemo, set: setInclDailyMemo },
+                { label: 'トレーニングメモ', val: inclTrainingMemo, set: setInclTrainingMemo },
+                { label: '運動エントリメモ', val: inclExerciseMemo, set: setInclExerciseMemo },
+              ].map(({ label, val, set }) => (
                 <button
                   key={label}
                   onClick={() => set(!val)}

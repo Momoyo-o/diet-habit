@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
-  AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
+  AreaChart, Area, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
   ReferenceLine, ResponsiveContainer, Cell
 } from 'recharts';
 import { format, subDays, startOfMonth, endOfMonth, addMonths, subMonths } from 'date-fns';
@@ -252,8 +252,112 @@ export default function GraphTab({ data, dateKey }: Props) {
         </div>
       </div>
 
+      {/* 推定1RM グラフ */}
+      {(() => {
+        // collect exercise names
+        const namesSet = new Set<string>();
+        Object.values(data.logs).forEach(log =>
+          log.exercises.filter(e => e.subType === 'strength').forEach(e => namesSet.add(e.name))
+        );
+        const exerciseNames = [...namesSet].sort();
+        return <OneRMCard data={data} exerciseNames={exerciseNames} />;
+      })()}
+
       {/* Monthly Calendar */}
       <CalendarCard data={data} todayKey={dateKey} />
+    </div>
+  );
+}
+
+// ─── 1RM card ─────────────────────────────────────────────────────────────────
+function calc1RM(weight: number, reps: number): number {
+  if (reps <= 0 || weight <= 0) return 0;
+  if (reps === 1) return weight;
+  const d = 1.0278 - 0.0278 * reps;
+  return d > 0 ? weight / d : weight;
+}
+
+function OneRMCard({ data, exerciseNames }: { data: AppData; exerciseNames: string[] }) {
+  const [selected, setSelected] = useState('');
+
+  useEffect(() => {
+    if (!selected && exerciseNames.length > 0) setSelected(exerciseNames[0]);
+  }, [exerciseNames, selected]);
+
+  const rmData = useMemo(() => {
+    if (!selected) return [];
+    const points: { label: string; rm: number | null; isPR: boolean }[] = [];
+    let maxRM = 0;
+    for (const dk of Object.keys(data.logs).sort()) {
+      const log = data.logs[dk];
+      const exes = log.exercises.filter(e => e.subType === 'strength' && e.name === selected);
+      if (exes.length === 0) continue;
+      let dayMax = 0;
+      exes.forEach(e => {
+        if (e.setsDetail && e.setsDetail.length > 0) {
+          e.setsDetail.forEach(s => {
+            if (s.weight != null && s.reps != null) dayMax = Math.max(dayMax, calc1RM(s.weight, s.reps));
+          });
+        } else if (e.weight != null && e.reps != null) {
+          dayMax = Math.max(dayMax, calc1RM(e.weight, e.reps));
+        }
+      });
+      if (dayMax <= 0) continue;
+      const rounded = Math.round(dayMax * 10) / 10;
+      const isPR = rounded > maxRM;
+      if (isPR) maxRM = rounded;
+      const d = new Date(dk + 'T00:00:00');
+      points.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, rm: rounded, isPR });
+    }
+    return points;
+  }, [data, selected]);
+
+  const pr = rmData.length > 0 ? Math.max(...rmData.map(p => p.rm ?? 0)) : null;
+
+  const CustomDot = (props: { cx?: number; cy?: number; payload?: { isPR: boolean } }) => {
+    const { cx = 0, cy = 0, payload } = props;
+    if (payload?.isPR) {
+      return <text x={cx} y={cy - 6} textAnchor="middle" fontSize={11} fill="#f59e0b">★</text>;
+    }
+    return <circle cx={cx} cy={cy} r={3} fill="#3b6ef5" stroke="white" strokeWidth={1} />;
+  };
+
+  if (exerciseNames.length === 0) return null;
+
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-sm font-semibold text-gray-700">推定1RM推移</span>
+        {pr !== null && (
+          <div className="flex items-center gap-1 text-xs text-amber-500 font-semibold">
+            <span>★</span><span>PR {pr} kg</span>
+          </div>
+        )}
+      </div>
+      <select
+        value={selected}
+        onChange={e => setSelected(e.target.value)}
+        className="w-full border border-gray-200 rounded-xl px-3 py-2 text-sm bg-white mb-3 focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
+      >
+        {exerciseNames.map(n => <option key={n} value={n}>{n}</option>)}
+      </select>
+      {rmData.length === 0 ? (
+        <div className="text-sm text-gray-400 text-center py-4">記録がありません</div>
+      ) : (
+        <ResponsiveContainer width="100%" height={180}>
+          <LineChart data={rmData} margin={{ top: 16, right: 10, left: -20, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+            <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
+            <YAxis tick={{ fontSize: 10 }} domain={['auto', 'auto']} />
+            <Tooltip formatter={(v: number) => [`${v} kg`, '推定1RM']} />
+            <Line type="monotone" dataKey="rm" stroke="#3b6ef5" strokeWidth={2} dot={<CustomDot />} connectNulls />
+          </LineChart>
+        </ResponsiveContainer>
+      )}
+      <div className="flex items-center gap-1.5 mt-2 justify-end">
+        <span className="text-amber-500 text-xs">★</span>
+        <span className="text-xs text-gray-400">PR更新日</span>
+      </div>
     </div>
   );
 }

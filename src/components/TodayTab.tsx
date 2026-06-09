@@ -38,7 +38,22 @@ function getOrInitSets(
 }
 
 // ─── Calorie Summary ─────────────────────────────────────────────────────────
-function CalSummaryCard({ log, settings, eatingOut }: { log: DayLog; settings: AppData['settings']; eatingOut?: boolean }) {
+function calcFoodScore(
+  cal: number, p: number, f: number, c: number,
+  t: { targetCal: number; targetP: number; targetF: number; targetC: number }
+): number {
+  const cp = cal / t.targetCal;
+  const cs = (cp >= 0.9 && cp <= 1.1) ? 25 : ((cp >= 0.8 && cp < 0.9) || (cp > 1.1 && cp <= 1.2)) ? 15 : 5;
+  const pp = p / t.targetP;
+  const ps = pp >= 1.0 ? 35 : pp >= 0.9 ? 25 : pp >= 0.8 ? 15 : 5;
+  const fp = f / t.targetF;
+  const fs = fp <= 1.0 ? 20 : fp <= 1.1 ? 15 : fp <= 1.2 ? 10 : 5;
+  const ccp = c / t.targetC;
+  const ccs = (ccp >= 0.9 && ccp <= 1.1) ? 20 : ((ccp >= 0.8 && ccp < 0.9) || (ccp > 1.1 && ccp <= 1.2)) ? 12 : 5;
+  return cs + ps + fs + ccs;
+}
+
+function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['settings'] }) {
   const totalCal = log.meals.reduce((s, m) => s + m.cal, 0);
   const remaining = settings.targetCal - totalCal;
   const pct = Math.min((totalCal / settings.targetCal) * 100, 100);
@@ -46,12 +61,13 @@ function CalSummaryCard({ log, settings, eatingOut }: { log: DayLog; settings: A
   const totalP = log.meals.reduce((s, m) => s + m.p, 0);
   const totalF = log.meals.reduce((s, m) => s + m.f, 0);
   const totalC = log.meals.reduce((s, m) => s + m.c, 0);
+  const score = log.meals.length > 0 ? calcFoodScore(totalCal, totalP, totalF, totalC, settings) : null;
+  const scoreColor = score === null ? '' : score >= 80 ? 'text-[#12b76a]' : score >= 60 ? 'text-amber-500' : 'text-red-500';
 
   return (
     <div className="card mb-3">
       <div className="flex items-start justify-between mb-1">
         <div>
-          {eatingOut && <span className="text-3xl font-bold text-gray-400 mr-0.5">〜</span>}
           <span className="num text-4xl font-bold text-gray-900">{totalCal}</span>
           <span className="text-sm text-gray-500 ml-1">kcal</span>
         </div>
@@ -77,13 +93,21 @@ function CalSummaryCard({ log, settings, eatingOut }: { log: DayLog; settings: A
               <span className="num text-lg font-bold text-gray-900">{val.toFixed(1)}</span>
               <span className="text-xs text-gray-400">g</span>
             </div>
-            <div className="text-xs text-gray-400 mb-1">{label} /{target}g{eatingOut && <span className="ml-1 text-amber-500">概算</span>}</div>
+            <div className="text-xs text-gray-400 mb-1">{label} /{target}g</div>
             <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <div className={`h-full ${color} rounded-full`} style={{ width: `${Math.min((val / target) * 100, 100)}%` }} />
             </div>
           </div>
         ))}
       </div>
+      {score !== null && (
+        <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
+          <div className="text-right">
+            <div className={`num text-2xl font-bold ${scoreColor}`}>{score}<span className="text-sm font-normal text-gray-400 ml-0.5">点</span></div>
+            <div className="text-xs text-gray-400">食事スコア</div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -580,6 +604,7 @@ const MEAL_TYPES = ['朝食', '昼食', '夕食', '間食', '1日トータル', 
 
 function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void; eatingOut?: boolean; trigger?: number }) {
   const [open, setOpen] = useState(false);
+  const [editId, setEditId] = useState<number | null>(null);
   const [name, setName] = useState(MEAL_TYPES[0]);
   const [cal, setCal] = useState('');
   const [p, setP] = useState('');
@@ -591,19 +616,36 @@ function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: {
     setOpen(true);
   }, [trigger]);
 
-  const add = () => {
+  const resetForm = () => { setEditId(null); setName(MEAL_TYPES[0]); setCal(''); setP(''); setF(''); setC(''); };
+
+  const openAdd = () => { resetForm(); setOpen(true); };
+  const openEdit = (m: MealEntry) => {
+    setEditId(m.id);
+    setName(m.name);
+    setCal(m.cal.toString());
+    setP(m.p.toString());
+    setF(m.f.toString());
+    setC(m.c.toString());
+    setOpen(true);
+  };
+
+  const save = () => {
     if (!eatingOut && !cal) return;
-    const entry: MealEntry = {
-      id: Date.now(),
-      name,
-      cal: parseInt(cal) || 0,
-      p: parseFloat(p) || 0,
-      f: parseFloat(f) || 0,
-      c: parseFloat(c) || 0,
-    };
-    onDataChange(setDayLog(data, dateKey, { ...log, meals: [...log.meals, entry] }));
-    setOpen(false);
-    setName(MEAL_TYPES[0]); setCal(''); setP(''); setF(''); setC('');
+    if (editId !== null) {
+      const newMeals = log.meals.map(m =>
+        m.id === editId
+          ? { ...m, name, cal: parseInt(cal) || 0, p: parseFloat(p) || 0, f: parseFloat(f) || 0, c: parseFloat(c) || 0 }
+          : m
+      );
+      onDataChange(setDayLog(data, dateKey, { ...log, meals: newMeals }));
+    } else {
+      const entry: MealEntry = {
+        id: Date.now(), name,
+        cal: parseInt(cal) || 0, p: parseFloat(p) || 0, f: parseFloat(f) || 0, c: parseFloat(c) || 0,
+      };
+      onDataChange(setDayLog(data, dateKey, { ...log, meals: [...log.meals, entry] }));
+    }
+    setOpen(false); resetForm();
   };
 
   const remove = (id: number) => {
@@ -617,7 +659,7 @@ function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: {
           <span className="text-sm font-semibold text-gray-700">食事</span>
           <button
             disabled={eatingOut}
-            onClick={() => setOpen(true)}
+            onClick={openAdd}
             className={`text-xs py-1 px-3 ${eatingOut ? 'bg-gray-100 text-gray-400 rounded-xl cursor-not-allowed' : 'btn-primary'}`}
           >＋ 追加</button>
         </div>
@@ -636,6 +678,9 @@ function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="num text-sm font-semibold text-[#3b6ef5]">{m.cal} kcal</span>
+                  <button onClick={() => openEdit(m)} className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200">
+                    <Pencil size={14} className="text-gray-400" />
+                  </button>
                   <button onClick={() => remove(m.id)} className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200">
                     <X size={14} className="text-gray-500" />
                   </button>
@@ -646,7 +691,7 @@ function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: {
         )}
       </div>
 
-      <BottomSheet open={open} onClose={() => setOpen(false)} title="食事を追加">
+      <BottomSheet open={open} onClose={() => { setOpen(false); resetForm(); }} title={editId !== null ? '食事を編集' : '食事を追加'}>
         <div className="space-y-4">
           <div>
             <label className="text-sm text-gray-600 block mb-1">食事タイプ</label>
@@ -674,7 +719,7 @@ function MealSection({ log, dateKey, data, onDataChange, eatingOut, trigger }: {
               </div>
             </>
           )}
-          <button onClick={add} className="btn-primary w-full py-3">追加</button>
+          <button onClick={save} className="btn-primary w-full py-3">{editId !== null ? '更新' : '追加'}</button>
         </div>
       </BottomSheet>
     </>
@@ -1022,7 +1067,9 @@ function HealthSection({ log, dateKey, data, onDataChange, trigger }: { log: Day
               <Droplets size={15} className="text-blue-400" />
               <span className="text-sm font-medium text-gray-700">排便</span>
             </div>
-            <div className="text-sm text-gray-500">{log.bowel ?? 'タップして記録'}</div>
+            <div className={`text-sm ${log.bowel === null ? 'text-gray-400' : log.bowel === 'なし' ? 'text-gray-300' : 'text-gray-500'}`}>
+              {log.bowel === null ? 'タップして記録' : log.bowel}
+            </div>
           </button>
         </div>
       </div>
@@ -1085,6 +1132,35 @@ function HealthSection({ log, dateKey, data, onDataChange, trigger }: { log: Day
   );
 }
 
+// ─── Training Memo Section ───────────────────────────────────────────────────
+function TrainingMemoSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const memo = log.trainingMemo ?? '';
+
+  return (
+    <>
+      <div className="mb-3">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold text-gray-700">トレーニングメモ</span>
+          <button onClick={() => { setText(memo); setOpen(true); }} className="bg-white border border-gray-200 text-gray-600 rounded-xl px-3 py-1 text-sm font-medium flex items-center gap-1 active:bg-gray-50">
+            <Pencil size={12} /> 編集
+          </button>
+        </div>
+        <div className="card min-h-[48px]">
+          {memo ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{memo}</p> : <p className="text-sm text-gray-400">メモなし</p>}
+        </div>
+      </div>
+      <BottomSheet open={open} onClose={() => setOpen(false)} title="トレーニングメモを編集">
+        <div className="space-y-4">
+          <textarea value={text} onChange={e => setText(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" rows={6} placeholder="今日のトレーニングの振り返りなど..." />
+          <button onClick={() => { onDataChange(setDayLog(data, dateKey, { ...log, trainingMemo: text })); setOpen(false); }} className="btn-primary w-full py-3">保存</button>
+        </div>
+      </BottomSheet>
+    </>
+  );
+}
+
 // ─── Memo Section ─────────────────────────────────────────────────────────────
 function MemoSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void }) {
   const [open, setOpen] = useState(false);
@@ -1132,6 +1208,7 @@ export default function TodayTab({ dateKey, data, onDataChange, bodyTrigger = 0,
       <WeekMenuCard dateKey={dateKey} data={data} onDataChange={onDataChange} />
       <MealSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} eatingOut={log.eatingOut} trigger={mealTrigger} />
       <ExerciseSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} trigger={exTrigger} />
+      <TrainingMemoSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} />
       <HealthSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} trigger={healthTrigger} />
       <MemoSection log={log} dateKey={dateKey} data={data} onDataChange={onDataChange} />
     </div>

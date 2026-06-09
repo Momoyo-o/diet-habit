@@ -20,9 +20,10 @@ const defaultDayLog = (): DayLog => ({
   meals: [],
   exercises: [],
   sleep: null,
-  bowel: null,
+  bowel: 'なし',
   eatingOut: false,
   memo: '',
+  trainingMemo: '',
   menuEdits: {},
 });
 
@@ -50,9 +51,12 @@ export function saveData(data: AppData): void {
 export function getDayLog(data: AppData, dateKey: string): DayLog {
   const stored = data.logs[dateKey];
   if (!stored) return defaultDayLog();
-  // Backfill menuEdits for old logs that pre-date this field
-  if (!stored.menuEdits) return { ...stored, menuEdits: {} };
-  return stored;
+  // Backfill missing fields for logs that pre-date new fields
+  return {
+    ...stored,
+    trainingMemo: stored.trainingMemo ?? '',
+    menuEdits: stored.menuEdits ?? {},
+  };
 }
 
 export function setDayLog(data: AppData, dateKey: string, log: DayLog): AppData {

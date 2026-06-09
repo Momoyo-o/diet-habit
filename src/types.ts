@@ -46,6 +46,7 @@ export type DayLog = {
   bowel: string | null;
   eatingOut: boolean;
   memo: string;
+  trainingMemo: string;
   menuEdits: Record<string, MenuEdit>;
 };
 
