@@ -53,39 +53,88 @@ function calcFoodScore(
   return cs + ps + fs + ccs;
 }
 
+// リングゲージ（食事スコア表示用）
+function RingGauge({ score }: { score: number }) {
+  const size = 44;
+  const sw = 4;
+  const r = (size - sw) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ * (1 - score / 100);
+  const color = score >= 80 ? '#3b6ef5' : score >= 60 ? '#f59e0b' : '#ef4444';
+  return (
+    <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="#e5e7eb" strokeWidth={sw} />
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={sw}
+          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round" />
+      </svg>
+      <div className="absolute inset-0 flex items-center justify-center">
+        <span className="num text-xs font-bold" style={{ color }}>{score}</span>
+      </div>
+    </div>
+  );
+}
+
+// 超過対応バー（目標を120%スケールで表示、超過分を赤で続ける）
+function OverflowBar({ ratio, barColor, h = 'h-1.5' }: { ratio: number; barColor: string; h?: string }) {
+  const isWayOver = ratio >= 1.2;
+  const TARGET_LINE = 100 / 1.2; // 83.33%
+  const normalW = isWayOver ? '0%' : `${Math.min(ratio, 1) / 1.2 * 100}%`;
+  const overW   = isWayOver ? '100%'
+    : ratio > 1 ? `${Math.min(ratio - 1, 0.2) / 1.2 * 100}%` : '0%';
+  const overL   = isWayOver ? '0%' : `${TARGET_LINE}%`;
+  return (
+    <div className={`${h} bg-gray-200 rounded-full overflow-hidden relative`}>
+      {/* 通常範囲 */}
+      <div className={`h-full absolute left-0 top-0 ${barColor}`} style={{ width: normalW }} />
+      {/* 超過範囲 */}
+      {ratio > 1 && <div className="h-full bg-red-400 absolute top-0" style={{ left: overL, width: overW }} />}
+      {/* 目標ライン（薄いグレー縦線） */}
+      <div className="absolute top-0 h-full w-px bg-gray-400 opacity-40" style={{ left: `${TARGET_LINE}%` }} />
+    </div>
+  );
+}
+
 function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['settings'] }) {
   const totalCal = log.meals.reduce((s, m) => s + m.cal, 0);
   const remaining = settings.targetCal - totalCal;
-  const pct = Math.min((totalCal / settings.targetCal) * 100, 100);
   const over = totalCal > settings.targetCal;
   const totalP = log.meals.reduce((s, m) => s + m.p, 0);
   const totalF = log.meals.reduce((s, m) => s + m.f, 0);
   const totalC = log.meals.reduce((s, m) => s + m.c, 0);
   const score = log.meals.length > 0 ? calcFoodScore(totalCal, totalP, totalF, totalC, settings) : null;
-  const scoreColor = score === null ? '' : score >= 80 ? 'text-[#12b76a]' : score >= 60 ? 'text-amber-500' : 'text-red-500';
 
   return (
     <div className="card mb-3">
+      {/* ヘッダー行: カロリー情報 + リングゲージ */}
       <div className="flex items-start justify-between mb-1">
         <div>
           <span className="num text-4xl font-bold text-gray-900">{totalCal}</span>
           <span className="text-sm text-gray-500 ml-1">kcal</span>
-        </div>
-        <div className="text-right">
-          <div className={`text-sm font-semibold ${over ? 'text-red-500' : 'text-[#12b76a]'}`}>
+          <div className={`text-sm font-semibold mt-0.5 ${over ? 'text-red-500' : 'text-[#12b76a]'}`}>
             {over ? `${Math.abs(remaining)} kcalオーバー` : `あと ${remaining} kcal`}
           </div>
           <div className="text-xs text-gray-400">目標 {settings.targetCal} kcal</div>
         </div>
+        {score !== null && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-gray-400 leading-tight text-right">食事<br />スコア</span>
+            <RingGauge score={score} />
+          </div>
+        )}
       </div>
-      <div className="h-2 bg-gray-100 rounded-full overflow-hidden mb-4">
-        <div className={`h-full rounded-full transition-all ${over ? 'bg-red-400' : 'bg-[#3b6ef5]'}`} style={{ width: `${pct}%` }} />
+
+      {/* カロリーバー */}
+      <div className="mb-4">
+        <OverflowBar ratio={totalCal / settings.targetCal} barColor="bg-[#3b6ef5]" h="h-2" />
       </div>
+
+      {/* PFC */}
       <div className="grid grid-cols-3 gap-2">
         {[
           { label: 'タンパク質', key: 'P', val: totalP, target: settings.targetP, color: 'bg-blue-400' },
-          { label: '脂質', key: 'F', val: totalF, target: settings.targetF, color: 'bg-yellow-400' },
-          { label: '炭水化物', key: 'C', val: totalC, target: settings.targetC, color: 'bg-green-400' },
+          { label: '脂質',       key: 'F', val: totalF, target: settings.targetF, color: 'bg-yellow-400' },
+          { label: '炭水化物',   key: 'C', val: totalC, target: settings.targetC, color: 'bg-green-400' },
         ].map(({ label, key, val, target, color }) => (
           <div key={key} className="bg-gray-50 rounded-xl p-2">
             <div className="flex items-baseline gap-1 mb-1">
@@ -94,20 +143,10 @@ function CalSummaryCard({ log, settings }: { log: DayLog; settings: AppData['set
               <span className="text-xs text-gray-400">g</span>
             </div>
             <div className="text-xs text-gray-400 mb-1">{label} /{target}g</div>
-            <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-              <div className={`h-full ${color} rounded-full`} style={{ width: `${Math.min((val / target) * 100, 100)}%` }} />
-            </div>
+            <OverflowBar ratio={val / target} barColor={color} />
           </div>
         ))}
       </div>
-      {score !== null && (
-        <div className="flex justify-end mt-3 pt-3 border-t border-gray-100">
-          <div className="text-right">
-            <div className={`num text-2xl font-bold ${scoreColor}`}>{score}<span className="text-sm font-normal text-gray-400 ml-0.5">点</span></div>
-            <div className="text-xs text-gray-400">食事スコア</div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
