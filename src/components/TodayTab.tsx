@@ -281,7 +281,7 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
   };
 
   // Toggle training item (筋トレ)
-  const toggleTrainingCheck = (i: number, ex: { name: string; sets: string; weight: number | null; point: string }) => {
+  const toggleTrainingCheck = (i: number, ex: { name: string; sets: string; weight: number | null; part?: string | null; point: string }) => {
     const ck = `t_${i}`;
     const newChecked = !checks[ck];
     const dayChecks = { ...checks, [ck]: newChecked };
@@ -294,7 +294,7 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
         id: exerciseId,
         type: 'gym',
         subType: 'strength',
-        part: '',
+        part: ex.part ?? '',
         name: ex.name,
         startTime: null,
         weight: currentSets[0]?.weight ?? null,
