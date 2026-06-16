@@ -15,6 +15,52 @@ type Props = {
   healthTrigger?: number;
 };
 
+// ─── Menu / PR helpers ───────────────────────────────────────────────────────
+function calc1RM_menu(weight: number, reps: number): number {
+  if (reps <= 0 || weight <= 0) return 0;
+  if (reps === 1) return weight;
+  const d = 1.0278 - 0.0278 * reps;
+  return d > 0 ? weight / d : weight;
+}
+
+function getLastExerciseRecord(data: AppData, currentDateKey: string, exerciseName: string): string | null {
+  const sortedKeys = Object.keys(data.logs).sort().reverse();
+  for (const dk of sortedKeys) {
+    if (dk >= currentDateKey) continue;
+    const log = data.logs[dk];
+    const ex = log.exercises.find(e => e.name === exerciseName && e.subType === 'strength');
+    if (!ex) continue;
+    if (ex.setsDetail && ex.setsDetail.length > 0) {
+      const maxW = Math.max(...ex.setsDetail.map(s => s.weight ?? 0));
+      const repAtMax = ex.setsDetail.find(s => (s.weight ?? 0) === maxW)?.reps;
+      const total = ex.setsDetail.length;
+      return [maxW > 0 ? `${maxW}kg` : null, repAtMax != null ? `×${repAtMax}` : null, `×${total}セット`].filter(Boolean).join('');
+    } else if (ex.weight || ex.reps || ex.sets) {
+      return [ex.weight ? `${ex.weight}kg` : null, ex.reps ? `×${ex.reps}` : null, ex.sets ? `×${ex.sets}セット` : null].filter(Boolean).join('') || null;
+    }
+  }
+  return null;
+}
+
+function checkIsPR(data: AppData, currentDateKey: string, exerciseName: string, sets: ExerciseSet[]): boolean {
+  if (sets.length === 0) return false;
+  let todayMax = 0;
+  sets.forEach(s => { if (s.weight != null && s.reps != null && s.reps > 0) todayMax = Math.max(todayMax, calc1RM_menu(s.weight, s.reps)); });
+  if (todayMax <= 0) return false;
+  let histMax = 0;
+  Object.entries(data.logs).forEach(([dk, log]) => {
+    if (dk >= currentDateKey) return;
+    log.exercises.filter(e => e.name === exerciseName && e.subType === 'strength').forEach(e => {
+      if (e.setsDetail && e.setsDetail.length > 0) {
+        e.setsDetail.forEach(s => { if (s.weight != null && s.reps != null && s.reps > 0) histMax = Math.max(histMax, calc1RM_menu(s.weight, s.reps)); });
+      } else if (e.weight != null && e.reps != null && e.reps > 0) {
+        histMax = Math.max(histMax, calc1RM_menu(e.weight, e.reps));
+      }
+    });
+  });
+  return todayMax > histMax;
+}
+
 // ─── Set helpers ─────────────────────────────────────────────────────────────
 function parseSetsField(setsStr: string, defaultWeight: number | null): ExerciseSet[] {
   const match = setsStr.trim().match(/^(\d+)[×xX](\d+)$/);
@@ -488,8 +534,11 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                           saveSets(ck, [...currentSets, { weight: last?.weight ?? null, reps: last?.reps ?? null }]);
                         };
 
+                        const lastRecord = getLastExerciseRecord(data, dateKey, ex.name);
+                        const isPRItem = done && checkIsPR(data, dateKey, ex.name, currentSets);
+
                         return (
-                          <div key={i} className="rounded-xl bg-gray-50 px-3 py-2.5">
+                          <div key={i} className={`rounded-xl px-3 py-2.5 ${isPRItem ? 'bg-amber-50' : 'bg-gray-50'}`}>
                             {/* Checkbox + name */}
                             <div className="flex items-start gap-2 mb-2">
                               <button
@@ -501,7 +550,9 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                               <div className="flex-1">
                                 <span className="text-sm font-medium text-gray-800">{ex.name}</span>
                                 {ex.point && <div className="text-xs text-gray-400 mt-0.5">{ex.point}</div>}
+                                {lastRecord && <div className="text-xs text-gray-400 mt-0.5">前回: {lastRecord}</div>}
                               </div>
+                              {isPRItem && <span className="text-xs text-amber-600 font-semibold bg-amber-100 px-1.5 py-0.5 rounded-full flex-shrink-0">PR 🏆</span>}
                             </div>
 
                             {/* Set rows */}
@@ -771,6 +822,7 @@ const BODY_PARTS = ['胸', '背中', '脚', '肩', '腕', '腹', '全身'];
 function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: DayLog; dateKey: string; data: AppData; onDataChange: (d: AppData) => void; trigger?: number }) {
   const [open, setOpen] = useState(false);
   const [type, setType] = useState<'gym' | 'other'>('gym');
+  const [isWalking, setIsWalking] = useState(false);
   const [subType, setSubType] = useState<'strength' | 'cardio'>('strength');
   const [part, setPart] = useState('胸');
   const [name, setName] = useState('');
@@ -783,12 +835,14 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
   const [memo, setMemo] = useState('');
 
   const reset = () => {
+    setType('gym'); setIsWalking(false); setSubType('strength');
     setName(''); setStartTime(''); setWeight(''); setReps(''); setSets('');
     setDuration(''); setBurnCal(''); setMemo(''); setPart('胸');
   };
 
   useEffect(() => {
     if (!trigger) return;
+    setType('gym'); setIsWalking(false); setSubType('strength');
     setName(''); setStartTime(''); setWeight(''); setReps(''); setSets('');
     setDuration(''); setBurnCal(''); setMemo(''); setPart('胸');
     setOpen(true);
@@ -808,13 +862,14 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
   };
 
   const add = () => {
-    if (!name) return;
+    const effectiveName = isWalking ? 'ウォーキング' : name;
+    if (!effectiveName) return;
     const entry: ExerciseEntry = {
       id: Date.now(),
-      type,
-      subType: type === 'gym' ? subType : '',
-      part: type === 'gym' && subType === 'strength' ? part : '',
-      name,
+      type: isWalking ? 'other' : type,
+      subType: (!isWalking && type === 'gym') ? subType : '',
+      part: (!isWalking && type === 'gym' && subType === 'strength') ? part : '',
+      name: effectiveName,
       startTime: startTime || null,
       weight: weight ? parseFloat(weight) : null,
       reps: reps ? parseInt(reps) : null,
@@ -925,17 +980,21 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
           {/* Type */}
           <div>
             <label className="text-sm text-gray-600 block mb-1.5">種別</label>
-            <div className="flex gap-2">
-              {(['gym', 'other'] as const).map(t => (
-                <button key={t} onClick={() => setType(t)} className={`flex-1 py-2 rounded-xl border text-sm font-medium flex items-center justify-center gap-1.5 ${type === t ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>
-                  {t === 'gym' ? <><Dumbbell size={14} /> ジム</> : <><Footprints size={14} /> その他</>}
-                </button>
-              ))}
+            <div className="flex gap-1.5">
+              <button onClick={() => { setType('gym'); setIsWalking(false); }} className={`flex-1 py-2 rounded-xl border text-xs font-medium flex items-center justify-center gap-1 ${type === 'gym' && !isWalking ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>
+                <Dumbbell size={13} /> ジム
+              </button>
+              <button onClick={() => { setType('other'); setIsWalking(true); }} className={`flex-1 py-2 rounded-xl border text-xs font-medium flex items-center justify-center gap-1 ${isWalking ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>
+                <Footprints size={13} /> ウォーキング
+              </button>
+              <button onClick={() => { setType('other'); setIsWalking(false); }} className={`flex-1 py-2 rounded-xl border text-xs font-medium flex items-center justify-center gap-1 ${type === 'other' && !isWalking ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600'}`}>
+                <Activity size={13} /> その他
+              </button>
             </div>
           </div>
 
           {/* SubType (gym only) */}
-          {type === 'gym' && (
+          {type === 'gym' && !isWalking && (
             <div>
               <label className="text-sm text-gray-600 block mb-1.5">トレーニング種類</label>
               <div className="flex gap-2">
@@ -946,7 +1005,7 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
           )}
 
           {/* Strength fields */}
-          {type === 'gym' && subType === 'strength' && (
+          {type === 'gym' && !isWalking && subType === 'strength' && (
             <>
               <div>
                 <label className="text-sm text-gray-600 block mb-1.5">部位</label>
@@ -990,7 +1049,7 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
           )}
 
           {/* Cardio fields */}
-          {type === 'gym' && subType === 'cardio' && (
+          {type === 'gym' && !isWalking && subType === 'cardio' && (
             <>
               <div>
                 <label className="text-sm text-gray-600 block mb-1">種目名</label>
@@ -1017,8 +1076,28 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
             </>
           )}
 
+          {/* Walking fields */}
+          {isWalking && (
+            <>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">時間 (分)</label>
+                  <input type="number" value={duration} onChange={e => setDuration(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="30" />
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600 block mb-1">消費カロリー (kcal)</label>
+                  <input type="number" value={burnCal} onChange={e => setBurnCal(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm num focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="150" />
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-600 block mb-1">メモ — 任意</label>
+                <input type="text" value={memo} onChange={e => setMemo(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" placeholder="例: 公園周回" />
+              </div>
+            </>
+          )}
+
           {/* Other fields */}
-          {type === 'other' && (
+          {type === 'other' && !isWalking && (
             <>
               <div>
                 <label className="text-sm text-gray-600 block mb-1">内容</label>

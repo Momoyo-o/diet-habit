@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Download, Check } from 'lucide-react';
-import { AppData, Settings, ExerciseEntry, MealEntry } from '../types';
-import { calcBMR, calcBMI, getDayLog } from '../store';
+import { AppData, Settings, ExerciseEntry } from '../types';
+import { calcBMR, calcBMI, getDayLog, renameExercise } from '../store';
 import BottomSheet from './BottomSheet';
 
 type Props = {
@@ -58,9 +58,6 @@ function fmtExercise(e: ExerciseEntry, inclMemo = false): string {
   return base;
 }
 
-function fmtMeal(m: MealEntry): string {
-  return `${m.name}　${m.cal}kcal　P${m.p.toFixed(1)}g F${m.f.toFixed(1)}g C${m.c.toFixed(1)}g`;
-}
 
 function buildExportText(
   data: AppData,
@@ -86,9 +83,13 @@ function buildExportText(
 
     if (opts.meals) {
       if (log.meals.length > 0) {
-        sections.push(`【食事】 ${log.meals.map(fmtMeal).join(' ')}`);
+        const tCal = log.meals.reduce((s, m) => s + m.cal, 0);
+        const tP   = log.meals.reduce((s, m) => s + m.p,   0);
+        const tF   = log.meals.reduce((s, m) => s + m.f,   0);
+        const tC   = log.meals.reduce((s, m) => s + m.c,   0);
+        sections.push(`【食事合計】 ${tCal}kcal　P${tP.toFixed(1)}g F${tF.toFixed(1)}g C${tC.toFixed(1)}g`);
       } else {
-        sections.push('【食事】 （記録なし）');
+        sections.push('【食事合計】 （記録なし）');
       }
     }
 
@@ -148,7 +149,7 @@ export default function SettingsTab({ data, onDataChange }: Props) {
   const [inclMeals, setInclMeals] = useState(false);
   const [inclBody, setInclBody] = useState(false);
   const [inclHealth, setInclHealth] = useState(false);
-  const [inclExerciseMemo, setInclExerciseMemo] = useState(false);
+  const [inclExerciseMemo, setInclExerciseMemo] = useState(true);
   const [inclTrainingMemo, setInclTrainingMemo] = useState(true);
   const [inclDailyMemo, setInclDailyMemo] = useState(true);
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('today');
@@ -156,6 +157,32 @@ export default function SettingsTab({ data, onDataChange }: Props) {
   const [customEnd, setCustomEnd] = useState('');
   const [exportText, setExportText] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // 種目名管理
+  const [renameFrom, setRenameFrom] = useState('');
+  const [renameTo, setRenameTo] = useState('');
+  const [renameConfirmOpen, setRenameConfirmOpen] = useState(false);
+  const [renameCount, setRenameCount] = useState(0);
+
+  const exerciseNames = useMemo(() => {
+    const s = new Set<string>();
+    Object.values(data.logs).forEach(l => l.exercises.forEach(e => s.add(e.name)));
+    return [...s].sort();
+  }, [data.logs]);
+
+  const confirmRename = () => {
+    if (!renameFrom || !renameTo || renameFrom === renameTo) return;
+    const cnt = Object.values(data.logs).reduce((n, l) => n + l.exercises.filter(e => e.name === renameFrom).length, 0);
+    setRenameCount(cnt);
+    setRenameConfirmOpen(true);
+  };
+
+  const executeRename = () => {
+    onDataChange(renameExercise(data, renameFrom, renameTo));
+    setRenameFrom('');
+    setRenameTo('');
+    setRenameConfirmOpen(false);
+  };
 
   const bmr = calcBMR(s, s.startWeight);
   const bmi = calcBMI(s.startWeight, s.height);
@@ -301,6 +328,33 @@ export default function SettingsTab({ data, onDataChange }: Props) {
         </div>
       </div>
 
+      {/* Exercise name management */}
+      <div className="card">
+        <div className="text-sm font-semibold text-gray-700 mb-3">種目名の管理</div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">変更前の種目名</label>
+            <select value={renameFrom} onChange={e => setRenameFrom(e.target.value)} className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]">
+              <option value="">選択してください</option>
+              {exerciseNames.map(n => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">変更後の種目名</label>
+            <input type="text" value={renameTo} onChange={e => setRenameTo(e.target.value)} list="rename-targets"
+              placeholder="種目名を入力または選択"
+              className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]" />
+            <datalist id="rename-targets">
+              {exerciseNames.map(n => <option key={n} value={n} />)}
+            </datalist>
+          </div>
+          <button onClick={confirmRename} disabled={!renameFrom || !renameTo || renameFrom === renameTo}
+            className="btn-primary w-full py-2.5 disabled:opacity-40 disabled:cursor-not-allowed">
+            統合する
+          </button>
+        </div>
+      </div>
+
       {/* Data export card */}
       <div className="card">
         <div className="flex items-center justify-between">
@@ -376,6 +430,22 @@ export default function SettingsTab({ data, onDataChange }: Props) {
             </div>
           </div>
           <button onClick={saveGoal} className="btn-primary w-full py-3">保存</button>
+        </div>
+      </BottomSheet>
+
+      {/* Rename confirm modal */}
+      <BottomSheet open={renameConfirmOpen} onClose={() => setRenameConfirmOpen(false)} title="確認">
+        <div className="space-y-4">
+          <p className="text-sm text-gray-700"><span className="num font-semibold">{renameCount}</span>件のエントリが変更されます。</p>
+          <div className="bg-gray-50 rounded-xl p-3 text-sm">
+            <span className="text-gray-500">{renameFrom}</span>
+            <span className="mx-2 text-gray-400">→</span>
+            <span className="font-semibold text-gray-900">{renameTo}</span>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => setRenameConfirmOpen(false)} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">キャンセル</button>
+            <button onClick={executeRename} className="flex-1 py-3 rounded-xl bg-[#3b6ef5] text-white text-sm font-medium">変更する</button>
+          </div>
         </div>
       </BottomSheet>
 

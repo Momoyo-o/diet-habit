@@ -27,18 +27,37 @@ const defaultDayLog = (): DayLog => ({
   menuEdits: {},
 });
 
+const MIGRATION_KEY = 'diet-habit-migration-v1';
+
 export function loadData(): AppData {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { logs: {}, weekMenus: {}, weekMemos: {}, menuChecks: {}, settings: defaultSettings };
-    const parsed = JSON.parse(raw) as Partial<AppData>;
-    return {
-      logs: parsed.logs ?? {},
-      weekMenus: parsed.weekMenus ?? {},
-      weekMemos: parsed.weekMemos ?? {},
-      menuChecks: parsed.menuChecks ?? {},
-      settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
-    };
+    let appData: AppData;
+    if (!raw) {
+      appData = { logs: {}, weekMenus: {}, weekMemos: {}, menuChecks: {}, settings: defaultSettings };
+    } else {
+      const parsed = JSON.parse(raw) as Partial<AppData>;
+      appData = {
+        logs: parsed.logs ?? {},
+        weekMenus: parsed.weekMenus ?? {},
+        weekMemos: parsed.weekMemos ?? {},
+        menuChecks: parsed.menuChecks ?? {},
+        settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
+      };
+    }
+    // 一度だけ実行する種目名マイグレーション
+    if (!localStorage.getItem(MIGRATION_KEY)) {
+      const migrations = [
+        { from: 'マルチプレス',          to: 'マルチプレス（フラット）' },
+        { from: 'マルチプレス90度',      to: 'マルチプレス（90度）'    },
+        { from: 'レッグプレス',          to: 'レッグプレス（ノーマル）' },
+        { from: 'バックエクステンション', to: 'リアデルト'             },
+      ];
+      migrations.forEach(({ from, to }) => { appData = renameExercise(appData, from, to); });
+      localStorage.setItem(MIGRATION_KEY, '1');
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appData));
+    }
+    return appData;
   } catch {
     return { logs: {}, weekMenus: {}, weekMemos: {}, menuChecks: {}, settings: defaultSettings };
   }
@@ -61,6 +80,16 @@ export function getDayLog(data: AppData, dateKey: string): DayLog {
 
 export function setDayLog(data: AppData, dateKey: string, log: DayLog): AppData {
   return { ...data, logs: { ...data.logs, [dateKey]: log } };
+}
+
+export function renameExercise(data: AppData, fromName: string, toName: string): AppData {
+  if (!fromName || !toName || fromName === toName) return data;
+  const newLogs: typeof data.logs = {};
+  Object.entries(data.logs).forEach(([dk, log]) => {
+    if (!log.exercises.some(e => e.name === fromName)) { newLogs[dk] = log; return; }
+    newLogs[dk] = { ...log, exercises: log.exercises.map(e => e.name === fromName ? { ...e, name: toName } : e) };
+  });
+  return { ...data, logs: newLogs };
 }
 
 export function calcBMR(s: Settings, weight: number): number {
