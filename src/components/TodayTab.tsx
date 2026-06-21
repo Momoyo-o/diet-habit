@@ -31,10 +31,10 @@ function getLastExerciseRecord(data: AppData, currentDateKey: string, exerciseNa
     const ex = log.exercises.find(e => e.name === exerciseName && e.subType === 'strength');
     if (!ex) continue;
     if (ex.setsDetail && ex.setsDetail.length > 0) {
-      const maxW = Math.max(...ex.setsDetail.map(s => s.weight ?? 0));
-      const repAtMax = ex.setsDetail.find(s => (s.weight ?? 0) === maxW)?.reps;
-      const total = ex.setsDetail.length;
-      return [maxW > 0 ? `${maxW}kg` : null, repAtMax != null ? `×${repAtMax}` : null, `×${total}セット`].filter(Boolean).join('');
+      const parts = ex.setsDetail
+        .map(s => [s.weight != null ? `${s.weight}kg` : null, s.reps != null ? `×${s.reps}` : null].filter(Boolean).join(''))
+        .filter(Boolean);
+      return parts.length > 0 ? parts.join(', ') : null;
     } else if (ex.weight || ex.reps || ex.sets) {
       return [ex.weight ? `${ex.weight}kg` : null, ex.reps ? `×${ex.reps}` : null, ex.sets ? `×${ex.sets}セット` : null].filter(Boolean).join('') || null;
     }
@@ -42,11 +42,11 @@ function getLastExerciseRecord(data: AppData, currentDateKey: string, exerciseNa
   return null;
 }
 
-function checkIsPR(data: AppData, currentDateKey: string, exerciseName: string, sets: ExerciseSet[]): boolean {
-  if (sets.length === 0) return false;
+function getPRStatus(data: AppData, currentDateKey: string, exerciseName: string, sets: ExerciseSet[]): 'pr' | 'tie' | null {
+  if (sets.length === 0) return null;
   let todayMax = 0;
   sets.forEach(s => { if (s.weight != null && s.reps != null && s.reps > 0) todayMax = Math.max(todayMax, calc1RM_menu(s.weight, s.reps)); });
-  if (todayMax <= 0) return false;
+  if (todayMax <= 0) return null;
   let histMax = 0;
   Object.entries(data.logs).forEach(([dk, log]) => {
     if (dk >= currentDateKey) return;
@@ -58,7 +58,9 @@ function checkIsPR(data: AppData, currentDateKey: string, exerciseName: string, 
       }
     });
   });
-  return todayMax > histMax;
+  if (todayMax > histMax) return 'pr';
+  if (histMax > 0 && todayMax === histMax) return 'tie';
+  return null;
 }
 
 // ─── Set helpers ─────────────────────────────────────────────────────────────
@@ -535,10 +537,10 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                         };
 
                         const lastRecord = getLastExerciseRecord(data, dateKey, ex.name);
-                        const isPRItem = done && checkIsPR(data, dateKey, ex.name, currentSets);
+                        const prStatus = done ? getPRStatus(data, dateKey, ex.name, currentSets) : null;
 
                         return (
-                          <div key={i} className={`rounded-xl px-3 py-2.5 ${isPRItem ? 'bg-amber-50' : 'bg-gray-50'}`}>
+                          <div key={i} className={`rounded-xl px-3 py-2.5 ${prStatus === 'pr' ? 'bg-amber-50' : prStatus === 'tie' ? 'bg-blue-50' : 'bg-gray-50'}`}>
                             {/* Checkbox + name */}
                             <div className="flex items-start gap-2 mb-2">
                               <button
@@ -552,7 +554,8 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                                 {ex.point && <div className="text-xs text-gray-400 mt-0.5">{ex.point}</div>}
                                 {lastRecord && <div className="text-xs text-gray-400 mt-0.5">前回: {lastRecord}</div>}
                               </div>
-                              {isPRItem && <span className="text-xs text-amber-600 font-semibold bg-amber-100 px-1.5 py-0.5 rounded-full flex-shrink-0">PR 🏆</span>}
+                              {prStatus === 'pr' && <span className="text-xs text-amber-600 font-semibold bg-amber-100 px-1.5 py-0.5 rounded-full flex-shrink-0">PR 🏆</span>}
+                              {prStatus === 'tie' && <span className="text-xs text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded-full flex-shrink-0">タイ 🎯</span>}
                             </div>
 
                             {/* Set rows */}

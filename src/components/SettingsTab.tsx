@@ -82,7 +82,9 @@ function buildExportText(
     }
 
     if (opts.meals) {
-      if (log.meals.length > 0) {
+      if (log.eatingOut) {
+        sections.push('【食事合計】 外食日のため記録なし');
+      } else if (log.meals.length > 0) {
         const tCal = log.meals.reduce((s, m) => s + m.cal, 0);
         const tP   = log.meals.reduce((s, m) => s + m.p,   0);
         const tF   = log.meals.reduce((s, m) => s + m.f,   0);
@@ -151,7 +153,7 @@ export default function SettingsTab({ data, onDataChange }: Props) {
   const [inclHealth, setInclHealth] = useState(false);
   const [inclExerciseMemo, setInclExerciseMemo] = useState(true);
   const [inclTrainingMemo, setInclTrainingMemo] = useState(true);
-  const [inclDailyMemo, setInclDailyMemo] = useState(true);
+  const [inclDailyMemo, setInclDailyMemo] = useState(false);
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'custom'>('today');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
