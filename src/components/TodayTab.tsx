@@ -47,27 +47,19 @@ function getPRStatus(data: AppData, currentDateKey: string, exerciseName: string
   let todayMax = 0;
   sets.forEach(s => { if (s.weight != null && s.reps != null && s.reps > 0) todayMax = Math.max(todayMax, calc1RM_menu(s.weight, s.reps)); });
   if (todayMax <= 0) return null;
-
-  // 「前回」セッション（直近1回）との比較。前回表示と基準を一致させるため。
-  const sortedKeys = Object.keys(data.logs).sort().reverse();
-  let prevMax = -1;
-  for (const dk of sortedKeys) {
-    if (dk >= currentDateKey) continue;
-    const log = data.logs[dk];
-    const ex = log.exercises.find(e => e.name === exerciseName && e.subType === 'strength');
-    if (!ex) continue;
-    prevMax = 0;
-    if (ex.setsDetail && ex.setsDetail.length > 0) {
-      ex.setsDetail.forEach(s => { if (s.weight != null && s.reps != null && s.reps > 0) prevMax = Math.max(prevMax, calc1RM_menu(s.weight, s.reps)); });
-    } else if (ex.weight != null && ex.reps != null && ex.reps > 0) {
-      prevMax = calc1RM_menu(ex.weight, ex.reps);
-    }
-    break;
-  }
-
-  if (prevMax < 0) return 'pr'; // 初回 = PR
-  if (todayMax > prevMax) return 'pr';
-  if (todayMax === prevMax) return 'tie';
+  let histMax = 0;
+  Object.entries(data.logs).forEach(([dk, log]) => {
+    if (dk >= currentDateKey) return;
+    log.exercises.filter(e => e.name === exerciseName && e.subType === 'strength').forEach(e => {
+      if (e.setsDetail && e.setsDetail.length > 0) {
+        e.setsDetail.forEach(s => { if (s.weight != null && s.reps != null && s.reps > 0) histMax = Math.max(histMax, calc1RM_menu(s.weight, s.reps)); });
+      } else if (e.weight != null && e.reps != null && e.reps > 0) {
+        histMax = Math.max(histMax, calc1RM_menu(e.weight, e.reps));
+      }
+    });
+  });
+  if (todayMax > histMax) return 'pr';
+  if (histMax > 0 && todayMax === histMax) return 'tie';
   return null;
 }
 
