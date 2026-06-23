@@ -34,13 +34,14 @@ export function loadData(): AppData {
     const raw = localStorage.getItem(STORAGE_KEY);
     let appData: AppData;
     if (!raw) {
-      appData = { logs: {}, weekMenus: {}, weekMemos: {}, menuChecks: {}, settings: defaultSettings };
+      appData = { logs: {}, weekMenus: {}, weekMemos: {}, weekGoals: {}, menuChecks: {}, settings: defaultSettings };
     } else {
       const parsed = JSON.parse(raw) as Partial<AppData>;
       appData = {
         logs: parsed.logs ?? {},
         weekMenus: parsed.weekMenus ?? {},
         weekMemos: parsed.weekMemos ?? {},
+        weekGoals: parsed.weekGoals ?? {},
         menuChecks: parsed.menuChecks ?? {},
         settings: { ...defaultSettings, ...(parsed.settings ?? {}) },
       };
@@ -59,7 +60,7 @@ export function loadData(): AppData {
     }
     return appData;
   } catch {
-    return { logs: {}, weekMenus: {}, weekMemos: {}, menuChecks: {}, settings: defaultSettings };
+    return { logs: {}, weekMenus: {}, weekMemos: {}, weekGoals: {}, menuChecks: {}, settings: defaultSettings };
   }
 }
 

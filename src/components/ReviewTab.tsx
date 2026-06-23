@@ -32,6 +32,8 @@ const DOW = ['月', '火', '水', '木', '金', '土', '日'];
 export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
   const [memoOpen, setMemoOpen] = useState(false);
   const [memoText, setMemoText] = useState('');
+  const [goalOpen, setGoalOpen] = useState(false);
+  const [goalText, setGoalText] = useState('');
 
   const monday = startOfWeek(new Date(dateKey), { weekStartsOn: 1 });
   const mondayKey = dateKeyFor(monday);
@@ -146,10 +148,16 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
   }));
 
   const weekMemo = data.weekMemos[mondayKey] ?? '';
+  const weekGoal = (data.weekGoals ?? {})[mondayKey] ?? '';
 
   const saveMemo = () => {
     onDataChange({ ...data, weekMemos: { ...data.weekMemos, [mondayKey]: memoText } });
     setMemoOpen(false);
+  };
+
+  const saveGoal = () => {
+    onDataChange({ ...data, weekGoals: { ...(data.weekGoals ?? {}), [mondayKey]: goalText } });
+    setGoalOpen(false);
   };
 
   const ratioStr = (vol: number, unit: number) => {
@@ -350,6 +358,28 @@ export default function ReviewTab({ data, dateKey, onDataChange }: Props) {
           </table>
         </div>
       </div>
+
+      {/* 今週の目標 */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-semibold text-gray-700">今週の目標</span>
+          <button onClick={() => { setGoalText(weekGoal); setGoalOpen(true); }} className="bg-white border border-gray-200 text-gray-600 rounded-xl px-3 py-1 text-sm font-medium flex items-center gap-1 active:bg-gray-50">
+            <Pencil size={12} /> 編集
+          </button>
+        </div>
+        {weekGoal
+          ? <p className="text-sm text-gray-700 whitespace-pre-wrap">{weekGoal}</p>
+          : <p className="text-sm text-gray-400">目標なし</p>}
+      </div>
+
+      <BottomSheet open={goalOpen} onClose={() => setGoalOpen(false)} title="今週の目標を編集">
+        <div className="space-y-4">
+          <textarea value={goalText} onChange={e => setGoalText(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
+            rows={5} placeholder="今週の目標を入力..." />
+          <button onClick={saveGoal} className="btn-primary w-full py-3">保存</button>
+        </div>
+      </BottomSheet>
 
       {/* 週のメモ */}
       <div className="card">

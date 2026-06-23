@@ -23,6 +23,42 @@ function calc1RM_menu(weight: number, reps: number): number {
   return d > 0 ? weight / d : weight;
 }
 
+type PRInfo = {
+  dateLabel: string;
+  estimatedRM: number;
+  sets: { weight: number; reps: number }[];
+};
+
+function getAllTimePR(data: AppData, exerciseName: string): PRInfo | null {
+  let bestRM = 0;
+  let bestInfo: PRInfo | null = null;
+  for (const [dk, log] of Object.entries(data.logs)) {
+    const exes = log.exercises.filter(e => e.name === exerciseName && e.subType === 'strength');
+    for (const ex of exes) {
+      let dayMax = 0;
+      let daySets: { weight: number; reps: number }[] = [];
+      if (ex.setsDetail && ex.setsDetail.length > 0) {
+        ex.setsDetail.forEach(s => {
+          if (s.weight != null && s.reps != null && s.reps > 0) {
+            const rm = calc1RM_menu(s.weight, s.reps);
+            if (rm > dayMax) dayMax = rm;
+          }
+        });
+        daySets = ex.setsDetail.filter(s => s.weight != null && s.reps != null).map(s => ({ weight: s.weight!, reps: s.reps! }));
+      } else if (ex.weight != null && ex.reps != null && ex.reps > 0) {
+        dayMax = calc1RM_menu(ex.weight, ex.reps);
+        daySets = [{ weight: ex.weight, reps: ex.reps }];
+      }
+      if (dayMax > bestRM) {
+        bestRM = dayMax;
+        const d = new Date(dk + 'T00:00:00');
+        bestInfo = { dateLabel: `${d.getMonth() + 1}/${d.getDate()}`, estimatedRM: Math.round(dayMax * 10) / 10, sets: daySets };
+      }
+    }
+  }
+  return bestInfo;
+}
+
 function getLastExerciseRecord(data: AppData, currentDateKey: string, exerciseName: string): string | null {
   const sortedKeys = Object.keys(data.logs).sort().reverse();
   for (const dk of sortedKeys) {
@@ -538,6 +574,7 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
 
                         const lastRecord = getLastExerciseRecord(data, dateKey, ex.name);
                         const prStatus = done ? getPRStatus(data, dateKey, ex.name, currentSets) : null;
+                        const prInfo = getAllTimePR(data, ex.name);
 
                         return (
                           <div key={i} className={`rounded-xl px-3 py-2.5 ${prStatus === 'pr' ? 'bg-amber-50' : prStatus === 'tie' ? 'bg-blue-50' : 'bg-gray-50'}`}>
@@ -553,6 +590,7 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                                 <span className="text-sm font-medium text-gray-800">{ex.name}</span>
                                 {ex.point && <div className="text-xs text-gray-400 mt-0.5">{ex.point}</div>}
                                 {lastRecord && <div className="text-xs text-gray-400 mt-0.5">前回: {lastRecord}</div>}
+                                {prInfo && <div className="text-xs text-amber-600 mt-0.5">PR: {prInfo.sets.map(s => `${s.weight}kg×${s.reps}`).join(', ')}（{prInfo.dateLabel}）推定1RM: {prInfo.estimatedRM}kg</div>}
                               </div>
                               {prStatus === 'pr' && <span className="text-xs text-amber-600 font-semibold bg-amber-100 px-1.5 py-0.5 rounded-full flex-shrink-0">PR 🏆</span>}
                               {prStatus === 'tie' && <span className="text-xs text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded-full flex-shrink-0">タイ 🎯</span>}
@@ -1310,11 +1348,54 @@ function MemoSection({ log, dateKey, data, onDataChange }: { log: DayLog; dateKe
   );
 }
 
+// ─── Week Goal Card ───────────────────────────────────────────────────────────
+function WeekGoalCard({ data, dateKey, onDataChange }: { data: AppData; dateKey: string; onDataChange: (d: AppData) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+
+  const mondayKey = (() => {
+    const d = new Date(dateKey + 'T00:00:00');
+    const dow = d.getDay();
+    const diff = dow === 0 ? -6 : 1 - dow;
+    d.setDate(d.getDate() + diff);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
+  const goal = (data.weekGoals ?? {})[mondayKey] ?? '';
+  if (!goal) return null;
+
+  return (
+    <>
+      <div className="card mb-3 bg-blue-50 border border-blue-100">
+        <div className="flex items-start gap-2">
+          <div className="flex-1">
+            <div className="text-xs text-[#3b6ef5] font-semibold mb-1">今週の目標</div>
+            <p className="text-sm text-gray-700 whitespace-pre-wrap">{goal}</p>
+          </div>
+          <button onClick={() => { setText(goal); setOpen(true); }} className="p-1.5 bg-white/70 rounded-lg active:bg-white flex-shrink-0">
+            <Pencil size={13} className="text-[#3b6ef5]" />
+          </button>
+        </div>
+      </div>
+      <BottomSheet open={open} onClose={() => setOpen(false)} title="今週の目標を編集">
+        <div className="space-y-4">
+          <textarea value={text} onChange={e => setText(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#3b6ef5]"
+            rows={5} placeholder="今週の目標を入力..." />
+          <button onClick={() => { onDataChange({ ...data, weekGoals: { ...(data.weekGoals ?? {}), [mondayKey]: text } }); setOpen(false); }}
+            className="btn-primary w-full py-3">保存</button>
+        </div>
+      </BottomSheet>
+    </>
+  );
+}
+
 // ─── Main ─────────────────────────────────────────────────────────────────────
 export default function TodayTab({ dateKey, data, onDataChange, bodyTrigger = 0, mealTrigger = 0, exTrigger = 0, healthTrigger = 0 }: Props) {
   const log = getDayLog(data, dateKey);
   return (
     <div>
+      <WeekGoalCard data={data} dateKey={dateKey} onDataChange={onDataChange} />
       {log.eatingOut ? (
         <div className="card mb-3 bg-amber-50 border-amber-200">
           <div className="flex items-center gap-2">

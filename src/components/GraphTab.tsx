@@ -116,10 +116,114 @@ export default function GraphTab({ data, dateKey }: Props) {
     });
   }, [data, dateKey, days]);
 
-  const weightPoints = points.filter(p => p.weight !== null);
-  const startWeight = weightPoints[0]?.weight ?? data.settings.startWeight;
-  const currentWeight = weightPoints[weightPoints.length - 1]?.weight ?? null;
-  const weightChange = currentWeight !== null ? Math.round((currentWeight - startWeight) * 10) / 10 : null;
+  // ── 全期間体重データ（#33）──────────────────────────────────────────────────
+  const weightChartInfo = useMemo(() => {
+    const entries = Object.entries(data.logs)
+      .filter(([, log]) => log.body?.weight != null)
+      .map(([dk, log]) => ({ dk, weight: log.body!.weight! }))
+      .sort((a, b) => a.dk.localeCompare(b.dk));
+
+    if (entries.length === 0) return { chartData: [], mode: 'raw' as const };
+
+    const first = new Date(entries[0].dk + 'T00:00:00');
+    const last  = new Date(dateKey + 'T00:00:00');
+    const spanDays = Math.round((last.getTime() - first.getTime()) / 86400000);
+
+    if (spanDays < 30) {
+      return {
+        chartData: entries.map(e => {
+          const d = new Date(e.dk + 'T00:00:00');
+          return { label: `${d.getMonth() + 1}/${d.getDate()}`, weight: e.weight };
+        }),
+        mode: 'raw' as const,
+      };
+    }
+
+    if (spanDays < 90) {
+      // 7日移動平均（対象日 ±3 日の記録平均）
+      const byDk: Record<string, number> = {};
+      entries.forEach(e => { byDk[e.dk] = e.weight; });
+      return {
+        chartData: entries.map(e => {
+          const d = new Date(e.dk + 'T00:00:00');
+          const ws: number[] = [];
+          for (let off = -3; off <= 3; off++) {
+            const od = new Date(d); od.setDate(d.getDate() + off);
+            const odk = dkFor(od);
+            if (byDk[odk] != null) ws.push(byDk[odk]);
+          }
+          const avg = ws.length > 0 ? ws.reduce((s, w) => s + w, 0) / ws.length : e.weight;
+          return { label: `${d.getMonth() + 1}/${d.getDate()}`, weight: Math.round(avg * 10) / 10 };
+        }),
+        mode: 'moving' as const,
+      };
+    }
+
+    // 週次平均（90日以上）
+    const weekMap: Record<string, number[]> = {};
+    entries.forEach(e => {
+      const d = new Date(e.dk + 'T00:00:00');
+      const dow = d.getDay();
+      const diff = dow === 0 ? -6 : 1 - dow;
+      d.setDate(d.getDate() + diff);
+      const wk = dkFor(d);
+      if (!weekMap[wk]) weekMap[wk] = [];
+      weekMap[wk].push(e.weight);
+    });
+    return {
+      chartData: Object.entries(weekMap).sort(([a], [b]) => a.localeCompare(b)).map(([wk, ws]) => {
+        const d = new Date(wk + 'T00:00:00');
+        return { label: `${d.getMonth() + 1}/${d.getDate()}`, weight: Math.round(ws.reduce((s, w) => s + w, 0) / ws.length * 10) / 10 };
+      }),
+      mode: 'weekly' as const,
+    };
+  }, [data, dateKey]);
+
+  // ── 体重統計（#34）────────────────────────────────────────────────────────
+  const weightStats = useMemo(() => {
+    const sortedDks = Object.keys(data.logs).sort();
+    let currentWeight: number | null = null;
+    for (const dk of [...sortedDks].reverse()) {
+      const w = data.logs[dk]?.body?.weight;
+      if (w != null) { currentWeight = w; break; }
+    }
+
+    const getWeekAvg = (monDk: string, sunDk: string): number | null => {
+      const ws = sortedDks.filter(dk => dk >= monDk && dk <= sunDk).map(dk => data.logs[dk]?.body?.weight).filter((w): w is number => w != null);
+      return ws.length > 0 ? ws.reduce((s, w) => s + w, 0) / ws.length : null;
+    };
+
+    // 1ヶ月前の週（28日前の月曜〜日曜）
+    const today = new Date(dateKey + 'T00:00:00');
+    const ago28 = new Date(today); ago28.setDate(today.getDate() - 28);
+    const dow28 = ago28.getDay();
+    ago28.setDate(ago28.getDate() + (dow28 === 0 ? -6 : 1 - dow28));
+    const monAgo = dkFor(ago28);
+    const sunAgo = dkFor(new Date(ago28.getTime() + 6 * 86400000));
+
+    let baseAvg = getWeekAvg(monAgo, sunAgo);
+    let baseLabel = '1ヶ月前比';
+
+    if (baseAvg == null) {
+      // 開始週（最古の体重記録がある週）
+      const firstWeightDk = sortedDks.find(dk => data.logs[dk]?.body?.weight != null);
+      if (firstWeightDk) {
+        const fd = new Date(firstWeightDk + 'T00:00:00');
+        const fdow = fd.getDay();
+        fd.setDate(fd.getDate() + (fdow === 0 ? -6 : 1 - fdow));
+        const monStart = dkFor(fd);
+        const sunStart = dkFor(new Date(fd.getTime() + 6 * 86400000));
+        baseAvg = getWeekAvg(monStart, sunStart);
+        baseLabel = '開始週比';
+      }
+    }
+
+    const change = currentWeight != null && baseAvg != null
+      ? Math.round((currentWeight - baseAvg) * 10) / 10
+      : null;
+
+    return { currentWeight, change, baseLabel };
+  }, [data, dateKey]);
 
   const streak = useMemo(() => {
     let count = 0;
@@ -132,7 +236,6 @@ export default function GraphTab({ data, dateKey }: Props) {
     return count;
   }, [data, dateKey]);
 
-  const weightData = points.map(p => ({ label: p.label, weight: p.weight }));
   const bodyfatData = points.map(p => ({ label: p.label, bodyfat: p.bodyfat }));
   const calData = points.map(p => ({ label: p.label, cal: p.netCal, isOver: p.isOver, eatingOut: p.eatingOut }));
 
@@ -151,29 +254,36 @@ export default function GraphTab({ data, dateKey }: Props) {
 
       {/* Stats */}
       <div className="card">
-        <div className="text-sm font-semibold text-gray-700 mb-3">体重統計 (直近14日)</div>
-        <div className="grid grid-cols-3 gap-3">
-          {[
-            { label: '開始体重', val: startWeight, unit: 'kg', color: '' },
-            { label: '現在体重', val: currentWeight ?? '—', unit: currentWeight ? 'kg' : '', color: '' },
-            { label: '変化量', val: weightChange !== null ? (weightChange > 0 ? `+${weightChange}` : weightChange) : '—', unit: weightChange !== null ? 'kg' : '', color: weightChange !== null ? (weightChange > 0 ? 'text-red-500' : 'text-[#12b76a]') : '' },
-          ].map(({ label, val, unit, color }) => (
-            <div key={label}>
-              <div className="text-xs text-gray-400 mb-1">{label}</div>
-              <div className={`flex items-baseline gap-0.5 ${color}`}>
-                <span className="num text-xl font-bold text-gray-900">{val}</span>
-                <span className="text-xs text-gray-400">{unit}</span>
-              </div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">体重統計</div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <div className="text-xs text-gray-400 mb-1">現在体重</div>
+            <div className="flex items-baseline gap-0.5">
+              <span className="num text-xl font-bold text-gray-900">{weightStats.currentWeight ?? '—'}</span>
+              {weightStats.currentWeight && <span className="text-xs text-gray-400">kg</span>}
             </div>
-          ))}
+          </div>
+          <div>
+            <div className="text-xs text-gray-400 mb-1">
+              変化{weightStats.baseLabel ? `（${weightStats.baseLabel}）` : ''}
+            </div>
+            <div className={`flex items-baseline gap-0.5 ${weightStats.change != null ? (weightStats.change > 0 ? 'text-red-500' : weightStats.change < 0 ? 'text-[#12b76a]' : 'text-gray-600') : ''}`}>
+              <span className="num text-xl font-bold">
+                {weightStats.change != null ? (weightStats.change > 0 ? `+${weightStats.change}` : weightStats.change) : '—'}
+              </span>
+              {weightStats.change != null && <span className="text-xs">kg</span>}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Weight chart */}
       <div className="card">
-        <div className="text-sm font-semibold text-gray-700 mb-3">体重推移 (14日間)</div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">
+          体重推移{weightChartInfo.mode === 'moving' ? '（7日移動平均）' : weightChartInfo.mode === 'weekly' ? '（週次平均）' : ''}
+        </div>
         <ResponsiveContainer width="100%" height={180}>
-          <AreaChart data={weightData} margin={{ top: 5, right: 24, left: -20, bottom: 0 }}>
+          <AreaChart data={weightChartInfo.chartData} margin={{ top: 5, right: 24, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="wGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#3b6ef5" stopOpacity={0.2} />
@@ -181,7 +291,7 @@ export default function GraphTab({ data, dateKey }: Props) {
               </linearGradient>
             </defs>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-            <XAxis dataKey="label" tick={{ fontSize: 10 }} />
+            <XAxis dataKey="label" tick={{ fontSize: 10 }} interval="preserveStartEnd" />
             <YAxis tick={{ fontSize: 10 }} domain={[
               (v: number) => Math.floor(Math.min(v, targetWeight ?? v) - 1),
               (v: number) => Math.ceil(Math.max(v, targetWeight ?? v) + 1),
@@ -284,35 +394,42 @@ function OneRMCard({ data, exerciseNames }: { data: AppData; exerciseNames: stri
     if (!selected && exerciseNames.length > 0) setSelected(exerciseNames[0]);
   }, [exerciseNames, selected]);
 
-  const rmData = useMemo(() => {
-    if (!selected) return [];
+  const { rmData, prInfo } = useMemo(() => {
+    if (!selected) return { rmData: [], prInfo: null as null | { label: string; rm: number; setsStr: string } };
     const points: { label: string; rm: number | null; isPR: boolean }[] = [];
     let maxRM = 0;
+    let prInfo: { label: string; rm: number; setsStr: string } | null = null;
     for (const dk of Object.keys(data.logs).sort()) {
       const log = data.logs[dk];
       const exes = log.exercises.filter(e => e.subType === 'strength' && e.name === selected);
       if (exes.length === 0) continue;
       let dayMax = 0;
+      let daySetsStr = '';
       exes.forEach(e => {
         if (e.setsDetail && e.setsDetail.length > 0) {
           e.setsDetail.forEach(s => {
-            if (s.weight != null && s.reps != null) dayMax = Math.max(dayMax, calc1RM(s.weight, s.reps));
+            if (s.weight != null && s.reps != null && s.reps > 0) {
+              const rm = calc1RM(s.weight, s.reps);
+              if (rm > dayMax) {
+                dayMax = rm;
+                daySetsStr = e.setsDetail!.filter(x => x.weight != null && x.reps != null).map(x => `${x.weight}kg×${x.reps}`).join(', ');
+              }
+            }
           });
-        } else if (e.weight != null && e.reps != null) {
-          dayMax = Math.max(dayMax, calc1RM(e.weight, e.reps));
+        } else if (e.weight != null && e.reps != null && e.reps > 0) {
+          const rm = calc1RM(e.weight, e.reps);
+          if (rm > dayMax) { dayMax = rm; daySetsStr = `${e.weight}kg×${e.reps}`; }
         }
       });
       if (dayMax <= 0) continue;
       const rounded = Math.round(dayMax * 10) / 10;
       const isPR = rounded > maxRM;
-      if (isPR) maxRM = rounded;
+      if (isPR) { maxRM = rounded; const d = new Date(dk + 'T00:00:00'); prInfo = { label: `${d.getMonth() + 1}/${d.getDate()}`, rm: rounded, setsStr: daySetsStr }; }
       const d = new Date(dk + 'T00:00:00');
       points.push({ label: `${d.getMonth() + 1}/${d.getDate()}`, rm: rounded, isPR });
     }
-    return points;
+    return { rmData: points, prInfo };
   }, [data, selected]);
-
-  const pr = rmData.length > 0 ? Math.max(...rmData.map(p => p.rm ?? 0)) : null;
 
   const CustomDot = (props: { cx?: number; cy?: number; payload?: { isPR: boolean } }) => {
     const { cx = 0, cy = 0, payload } = props;
@@ -326,14 +443,15 @@ function OneRMCard({ data, exerciseNames }: { data: AppData; exerciseNames: stri
 
   return (
     <div className="card">
-      <div className="flex items-center justify-between mb-3">
+      <div className="flex items-center justify-between mb-1">
         <span className="text-sm font-semibold text-gray-700">推定1RM推移</span>
-        {pr !== null && (
-          <div className="flex items-center gap-1 text-xs text-amber-500 font-semibold">
-            <span>★</span><span>PR {pr} kg</span>
-          </div>
-        )}
       </div>
+      {prInfo && (
+        <div className="bg-amber-50 rounded-xl px-3 py-2 mb-3 text-xs text-amber-700">
+          <span className="font-semibold">★ 最高PR: {prInfo.rm}kg（{prInfo.label}）</span>
+          <span className="text-amber-600 ml-1">｜{prInfo.setsStr}</span>
+        </div>
+      )}
       <select
         value={selected}
         onChange={e => setSelected(e.target.value)}

@@ -67,6 +67,7 @@ export type AppData = {
   logs: Record<string, DayLog>;
   weekMenus: Record<string, string>;
   weekMemos: Record<string, string>;
+  weekGoals: Record<string, string>;
   menuChecks: Record<string, Record<string, boolean>>;
   settings: Settings;
 };
