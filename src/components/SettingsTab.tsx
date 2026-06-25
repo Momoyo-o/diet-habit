@@ -1,7 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Download, Check } from 'lucide-react';
 import { AppData, Settings, ExerciseEntry } from '../types';
 import { calcBMR, calcBMI, getDayLog, renameExercise } from '../store';
+import { listBackups, getBackupData, BackupMeta } from '../idb';
 import BottomSheet from './BottomSheet';
 
 type Props = {
@@ -165,6 +166,36 @@ export default function SettingsTab({ data, onDataChange }: Props) {
   const [renameTo, setRenameTo] = useState('');
   const [renameConfirmOpen, setRenameConfirmOpen] = useState(false);
   const [renameCount, setRenameCount] = useState(0);
+
+  // Restore state
+  const [restoreOpen, setRestoreOpen] = useState(false);
+  const [backupList, setBackupList] = useState<BackupMeta[]>([]);
+  const [backupsLoading, setBackupsLoading] = useState(false);
+  const [selectedMeta, setSelectedMeta] = useState<BackupMeta | null>(null);
+  const [restoreResult, setRestoreResult] = useState('');
+
+  useEffect(() => {
+    if (!restoreOpen) return;
+    setBackupsLoading(true);
+    listBackups()
+      .then(list => { setBackupList(list); setBackupsLoading(false); })
+      .catch(() => setBackupsLoading(false));
+  }, [restoreOpen]);
+
+  const executeRestore = async () => {
+    if (!selectedMeta) return;
+    const restoredData = await getBackupData(selectedMeta.id).catch(() => null);
+    if (!restoredData) return;
+    onDataChange(restoredData);
+    setRestoreResult(`${selectedMeta.label} のデータに復元しました`);
+    setRestoreOpen(false);
+    setSelectedMeta(null);
+  };
+
+  const closeRestore = () => {
+    setRestoreOpen(false);
+    setSelectedMeta(null);
+  };
 
   // Import state
   const [importOpen, setImportOpen] = useState(false);
@@ -458,6 +489,25 @@ export default function SettingsTab({ data, onDataChange }: Props) {
         )}
       </div>
 
+      {/* Restore from backup card */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-0.5">バックアップから復元</div>
+            <div className="text-xs text-gray-400">直近7世代のバックアップから選択して復元</div>
+          </div>
+          <button
+            onClick={() => { setRestoreResult(''); setRestoreOpen(true); }}
+            className="bg-white border border-gray-200 text-gray-700 rounded-xl text-xs py-1.5 px-3 flex items-center gap-1.5 active:bg-gray-50"
+          >
+            復元
+          </button>
+        </div>
+        {restoreResult && (
+          <div className="mt-2 text-xs text-[#12b76a] font-medium">{restoreResult}</div>
+        )}
+      </div>
+
       {/* Profile edit modal */}
       <BottomSheet open={profileOpen} onClose={() => setProfileOpen(false)} title="プロフィール編集">
         <div className="space-y-4">
@@ -636,6 +686,52 @@ export default function SettingsTab({ data, onDataChange }: Props) {
             </>
           )}
 
+        </div>
+      </BottomSheet>
+
+      {/* Restore modal */}
+      <BottomSheet open={restoreOpen} onClose={closeRestore} title="バックアップから復元">
+        <div className="space-y-3">
+          {selectedMeta ? (
+            <>
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm text-amber-800">
+                現在のデータはこの操作で上書きされます。元に戻すことはできません。
+              </div>
+              <div className="bg-gray-50 rounded-xl px-4 py-3">
+                <div className="text-sm font-semibold text-gray-800">{selectedMeta.label}</div>
+                <div className="text-xs text-gray-500 mt-0.5">{selectedMeta.logCount}日分のデータ</div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setSelectedMeta(null)} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">戻る</button>
+                <button onClick={executeRestore} className="flex-1 py-3 rounded-xl bg-amber-500 text-white text-sm font-medium">復元する</button>
+              </div>
+            </>
+          ) : backupsLoading ? (
+            <div className="py-8 text-center text-sm text-gray-400">読み込み中...</div>
+          ) : backupList.length === 0 ? (
+            <div className="py-8 text-center text-sm text-gray-400">バックアップがありません</div>
+          ) : (
+            <>
+              <div className="text-xs text-gray-400 px-1">アプリを開いた時刻が新しい順に表示されます</div>
+              <div className="space-y-2">
+                {backupList.map((b, i) => (
+                  <button
+                    key={b.id}
+                    onClick={() => setSelectedMeta(b)}
+                    className="w-full flex items-center justify-between bg-gray-50 rounded-xl px-4 py-3 active:bg-gray-100 text-left"
+                  >
+                    <div>
+                      <div className="text-sm font-medium text-gray-800">{b.label}</div>
+                      <div className="text-xs text-gray-400 mt-0.5">{b.logCount}日分のデータ</div>
+                    </div>
+                    {i === 0 && (
+                      <span className="text-[10px] font-semibold text-[#3b6ef5] bg-blue-50 px-2 py-0.5 rounded-full flex-shrink-0">最新</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </BottomSheet>
 

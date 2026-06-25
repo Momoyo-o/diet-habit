@@ -1,9 +1,10 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { format, addDays, subDays } from 'date-fns';
 import { ja } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight, Utensils, BarChart2, CalendarDays, Settings as SettingsIcon, ClipboardList, Leaf, Scale, Heart, Dumbbell } from 'lucide-react';
 import { AppData } from './types';
 import { loadData, saveData, getDayLog, setDayLog } from './store';
+import { saveBackup } from './idb';
 import TodayTab from './components/TodayTab';
 import GraphTab from './components/GraphTab';
 import ReviewTab from './components/ReviewTab';
@@ -20,6 +21,8 @@ export default function App() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [data, setData] = useState<AppData>(() => loadData());
   const [bodyTrigger, setBodyTrigger] = useState(0);
+
+  useEffect(() => { saveBackup(data).catch(() => {}); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const [mealTrigger, setMealTrigger] = useState(0);
   const [exTrigger, setExTrigger] = useState(0);
   const [healthTrigger, setHealthTrigger] = useState(0);
