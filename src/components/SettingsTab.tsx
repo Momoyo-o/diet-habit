@@ -166,6 +166,15 @@ export default function SettingsTab({ data, onDataChange }: Props) {
   const [renameConfirmOpen, setRenameConfirmOpen] = useState(false);
   const [renameCount, setRenameCount] = useState(0);
 
+  // Import state
+  const [importOpen, setImportOpen] = useState(false);
+  const [importJson, setImportJson] = useState('');
+  const [importStep, setImportStep] = useState<'input' | 'confirm'>('input');
+  const [importParsed, setImportParsed] = useState<AppData | null>(null);
+  const [importError, setImportError] = useState('');
+  const [importMode, setImportMode] = useState<'add' | 'overwrite'>('add');
+  const [importResult, setImportResult] = useState('');
+
   const exerciseNames = useMemo(() => {
     const s = new Set<string>();
     Object.values(data.logs).forEach(l => l.exercises.forEach(e => s.add(e.name)));
@@ -184,6 +193,63 @@ export default function SettingsTab({ data, onDataChange }: Props) {
     setRenameFrom('');
     setRenameTo('');
     setRenameConfirmOpen(false);
+  };
+
+  const parseImport = () => {
+    setImportError('');
+    try {
+      const parsed = JSON.parse(importJson);
+      if (!parsed || typeof parsed !== 'object' || !parsed.logs || typeof parsed.logs !== 'object') {
+        setImportError('有効なデータ形式ではありません（logsフィールドが必要です）');
+        return;
+      }
+      setImportParsed(parsed as AppData);
+      setImportStep('confirm');
+    } catch {
+      setImportError('JSONの形式が正しくありません');
+    }
+  };
+
+  const executeImport = () => {
+    if (!importParsed) return;
+    const imported = importParsed;
+    let newData: AppData;
+    if (importMode === 'overwrite') {
+      newData = {
+        logs: imported.logs ?? {},
+        weekMenus: imported.weekMenus ?? {},
+        weekMemos: imported.weekMemos ?? {},
+        weekGoals: imported.weekGoals ?? {},
+        menuChecks: imported.menuChecks ?? {},
+        settings: imported.settings ?? data.settings,
+      };
+    } else {
+      // 追加: 既存データ優先（インポート側で埋める）
+      newData = {
+        logs: { ...imported.logs, ...data.logs },
+        weekMenus: { ...imported.weekMenus, ...data.weekMenus },
+        weekMemos: { ...imported.weekMemos, ...data.weekMemos },
+        weekGoals: { ...imported.weekGoals, ...data.weekGoals },
+        menuChecks: { ...imported.menuChecks, ...data.menuChecks },
+        settings: data.settings,
+      };
+    }
+    const count = Object.keys(imported.logs ?? {}).length;
+    onDataChange(newData);
+    setImportResult(`${count}日分のデータをインポートしました`);
+    setImportOpen(false);
+    setImportStep('input');
+    setImportJson('');
+    setImportParsed(null);
+  };
+
+  const closeImport = () => {
+    setImportOpen(false);
+    setImportStep('input');
+    setImportJson('');
+    setImportParsed(null);
+    setImportError('');
+    setImportResult('');
   };
 
   const bmr = calcBMR(s, s.startWeight);
@@ -373,6 +439,25 @@ export default function SettingsTab({ data, onDataChange }: Props) {
         </div>
       </div>
 
+      {/* Data import card */}
+      <div className="card">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="text-sm font-semibold text-gray-700 mb-0.5">データをインポート</div>
+            <div className="text-xs text-gray-400">JSONを貼り付けて既存データに追加・上書き</div>
+          </div>
+          <button
+            onClick={() => { setImportResult(''); setImportOpen(true); }}
+            className="bg-white border border-gray-200 text-gray-700 rounded-xl text-xs py-1.5 px-3 flex items-center gap-1.5 active:bg-gray-50"
+          >
+            インポート
+          </button>
+        </div>
+        {importResult && (
+          <div className="mt-2 text-xs text-[#12b76a] font-medium">{importResult}</div>
+        )}
+      </div>
+
       {/* Profile edit modal */}
       <BottomSheet open={profileOpen} onClose={() => setProfileOpen(false)} title="プロフィール編集">
         <div className="space-y-4">
@@ -551,6 +636,61 @@ export default function SettingsTab({ data, onDataChange }: Props) {
             </>
           )}
 
+        </div>
+      </BottomSheet>
+
+      {/* Import modal */}
+      <BottomSheet open={importOpen} onClose={closeImport} title="データをインポート">
+        <div className="space-y-4">
+          {importStep === 'input' ? (
+            <>
+              <div>
+                <div className="text-sm text-gray-600 mb-2">JSONデータを貼り付けてください</div>
+                <textarea
+                  value={importJson}
+                  onChange={e => { setImportJson(e.target.value); setImportError(''); }}
+                  className="w-full border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-mono bg-gray-50 focus:outline-none focus:ring-2 focus:ring-[#3b6ef5] resize-none"
+                  rows={8}
+                  placeholder='{"logs": {...}, "settings": {...}}'
+                />
+                {importError && (
+                  <div className="mt-1.5 text-xs text-red-500">{importError}</div>
+                )}
+              </div>
+              <div className="flex gap-2">
+                <button onClick={closeImport} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">キャンセル</button>
+                <button onClick={parseImport} disabled={!importJson.trim()} className="flex-1 py-3 rounded-xl bg-[#3b6ef5] text-white text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed">次へ</button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-gray-50 rounded-xl px-4 py-3 text-sm text-gray-700 text-center">
+                <span className="font-semibold text-[#3b6ef5]">{Object.keys(importParsed?.logs ?? {}).length}日分</span>のデータが見つかりました
+              </div>
+              <div>
+                <div className="text-sm text-gray-600 mb-2">インポート方法</div>
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    { val: 'add' as const, label: '追加', desc: '既存データを優先して不足分を補完' },
+                    { val: 'overwrite' as const, label: '上書き', desc: 'インポートしたデータで完全に置き換え' },
+                  ]).map(({ val, label, desc }) => (
+                    <button
+                      key={val}
+                      onClick={() => setImportMode(val)}
+                      className={`flex flex-col items-start gap-0.5 px-3 py-2.5 rounded-xl border text-sm font-medium ${importMode === val ? 'bg-[#3b6ef5] text-white border-[#3b6ef5]' : 'border-gray-200 text-gray-600 bg-white'}`}
+                    >
+                      <span>{label}</span>
+                      <span className={`text-xs font-normal leading-tight ${importMode === val ? 'text-blue-100' : 'text-gray-400'}`}>{desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setImportStep('input')} className="flex-1 py-3 rounded-xl border border-gray-200 text-gray-600 text-sm font-medium">戻る</button>
+                <button onClick={executeImport} className="flex-1 py-3 rounded-xl bg-[#3b6ef5] text-white text-sm font-medium">インポート実行</button>
+              </div>
+            </>
+          )}
         </div>
       </BottomSheet>
     </div>
