@@ -59,23 +59,19 @@ function getAllTimePR(data: AppData, exerciseName: string): PRInfo | null {
   return bestInfo;
 }
 
-function getLastExerciseRecord(data: AppData, currentDateKey: string, exerciseName: string): string | null {
-  const sortedKeys = Object.keys(data.logs).sort().reverse();
-  for (const dk of sortedKeys) {
-    if (dk >= currentDateKey) continue;
-    const log = data.logs[dk];
-    const ex = log.exercises.find(e => e.name === exerciseName && e.subType === 'strength');
-    if (!ex) continue;
-    if (ex.setsDetail && ex.setsDetail.length > 0) {
-      const parts = ex.setsDetail
-        .map(s => [s.weight != null ? `${s.weight}kg` : null, s.reps != null ? `×${s.reps}` : null].filter(Boolean).join(''))
-        .filter(Boolean);
-      return parts.length > 0 ? parts.join(', ') : null;
-    } else if (ex.weight || ex.reps || ex.sets) {
-      return [ex.weight ? `${ex.weight}kg` : null, ex.reps ? `×${ex.reps}` : null, ex.sets ? `×${ex.sets}セット` : null].filter(Boolean).join('') || null;
-    }
-  }
-  return null;
+function getHistMaxRM(data: AppData, currentDateKey: string, exerciseName: string): number {
+  let histMax = 0;
+  Object.entries(data.logs).forEach(([dk, log]) => {
+    if (dk >= currentDateKey) return;
+    log.exercises.filter(e => e.name === exerciseName && e.subType === 'strength').forEach(e => {
+      if (e.setsDetail && e.setsDetail.length > 0) {
+        e.setsDetail.forEach(s => { if (s.weight != null && s.reps != null && s.reps > 0) histMax = Math.max(histMax, calc1RM_menu(s.weight, s.reps)); });
+      } else if (e.weight != null && e.reps != null && e.reps > 0) {
+        histMax = Math.max(histMax, calc1RM_menu(e.weight, e.reps));
+      }
+    });
+  });
+  return histMax;
 }
 
 function getPRStatus(data: AppData, currentDateKey: string, exerciseName: string, sets: ExerciseSet[]): 'pr' | 'tie' | null {
@@ -572,7 +568,6 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                           saveSets(ck, [...currentSets, { weight: last?.weight ?? null, reps: last?.reps ?? null }]);
                         };
 
-                        const lastRecord = getLastExerciseRecord(data, dateKey, ex.name);
                         const prStatus = done ? getPRStatus(data, dateKey, ex.name, currentSets) : null;
                         const prInfo = getAllTimePR(data, ex.name);
 
@@ -589,7 +584,6 @@ function WeekMenuCard({ dateKey, data, onDataChange }: { dateKey: string; data: 
                               <div className="flex-1">
                                 <span className="text-sm font-medium text-gray-800">{ex.name}</span>
                                 {ex.point && <div className="text-xs text-gray-400 mt-0.5">{ex.point}</div>}
-                                {lastRecord && <div className="text-xs text-gray-400 mt-0.5">前回: {lastRecord}</div>}
                                 {prInfo && <div className="text-xs text-amber-600 mt-0.5">PR: {prInfo.sets.map(s => `${s.weight}kg×${s.reps}`).join(', ')}（{prInfo.dateLabel}）推定1RM: {prInfo.estimatedRM}kg</div>}
                               </div>
                               {prStatus === 'pr' && <span className="text-xs text-amber-600 font-semibold bg-amber-100 px-1.5 py-0.5 rounded-full flex-shrink-0">PR 🏆</span>}
@@ -985,33 +979,59 @@ function ExerciseSection({ log, dateKey, data, onDataChange, trigger }: { log: D
           <div className="card text-center text-sm text-gray-400 py-4">記録なし</div>
         ) : (
           <div className="space-y-2">
-            {log.exercises.map(ex => (
-              <div key={ex.id} className="card flex items-center gap-3">
-                <ExerciseIcon ex={ex} />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-800">
-                    {ex.name}{ex.part ? ` (${ex.part})` : ''}
-                    {ex.fromMenu && <span className="ml-1.5 text-xs text-[#3b6ef5] bg-blue-50 px-1.5 py-0.5 rounded-full">メニュー</span>}
+            {log.exercises.map(ex => {
+              const isStrengthWithSets = ex.subType === 'strength' && ex.setsDetail && ex.setsDetail.length > 0;
+              const histMax = isStrengthWithSets ? getHistMaxRM(data, dateKey, ex.name) : 0;
+              const extraInfo = isStrengthWithSets
+                ? [ex.startTime ? `${ex.startTime}〜` : null, ex.duration ? `${ex.duration}分` : null, ex.memo || null].filter(Boolean).join('・')
+                : '';
+              return (
+                <div key={ex.id} className="card flex items-start gap-3">
+                  <ExerciseIcon ex={ex} />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-800">
+                      {ex.name}{ex.part ? ` (${ex.part})` : ''}
+                      {ex.fromMenu && <span className="ml-1.5 text-xs text-[#3b6ef5] bg-blue-50 px-1.5 py-0.5 rounded-full">メニュー</span>}
+                    </div>
+                    {isStrengthWithSets ? (
+                      <div className="mt-0.5 space-y-0.5">
+                        {ex.setsDetail!.map((s, si) => {
+                          const setRM = (s.weight != null && s.reps != null && s.reps > 0) ? calc1RM_menu(s.weight, s.reps) : 0;
+                          const isNewPR = setRM > 0 && setRM > histMax;
+                          const isTie = setRM > 0 && setRM === histMax && histMax > 0;
+                          return (
+                            <div key={si} className="flex items-center gap-1">
+                              <span className="text-xs text-gray-400 w-4 flex-shrink-0">{si + 1}.</span>
+                              <span className="text-xs text-gray-600">{s.weight != null ? `${s.weight}kg` : '—'} × {s.reps != null ? `${s.reps}回` : '—'}</span>
+                              {isNewPR && <span className="text-[10px] font-bold text-white bg-red-500 px-1.5 py-0.5 rounded-full leading-none">MAX RM</span>}
+                              {isTie && <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded-full leading-none">MAX RM</span>}
+                            </div>
+                          );
+                        })}
+                        {extraInfo && <div className="text-xs text-gray-400 mt-0.5">{extraInfo}</div>}
+                      </div>
+                    ) : (
+                      subLabel(ex) && <div className="text-xs text-gray-400 mt-0.5">{subLabel(ex)}</div>
+                    )}
+                    {ex.userMemo && <div className="text-xs text-[#3b6ef5] mt-0.5">{ex.userMemo}</div>}
                   </div>
-                  {subLabel(ex) && <div className="text-xs text-gray-400 mt-0.5">{subLabel(ex)}</div>}
-                  {ex.userMemo && <div className="text-xs text-[#3b6ef5] mt-0.5">{ex.userMemo}</div>}
+                  <div className="flex items-center gap-2">
+                    {ex.burnCal > 0 && (
+                      <span className="num text-sm font-semibold text-[#12b76a]">-{ex.burnCal} kcal</span>
+                    )}
+                    <button
+                      onClick={() => { setEditMemoId(ex.id); setEditMemoText(ex.userMemo ?? ''); }}
+                      className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200"
+                    >
+                      <Pencil size={14} className={ex.userMemo ? 'text-[#3b6ef5]' : 'text-gray-400'} />
+                    </button>
+                    <button onClick={() => remove(ex.id)} className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200">
+                      <X size={14} className="text-gray-500" />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {ex.burnCal > 0 && (
-                    <span className="num text-sm font-semibold text-[#12b76a]">-{ex.burnCal} kcal</span>
-                  )}
-                  <button
-                    onClick={() => { setEditMemoId(ex.id); setEditMemoText(ex.userMemo ?? ''); }}
-                    className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200"
-                  >
-                    <Pencil size={14} className={ex.userMemo ? 'text-[#3b6ef5]' : 'text-gray-400'} />
-                  </button>
-                  <button onClick={() => remove(ex.id)} className="p-1.5 bg-gray-100 rounded-lg active:bg-gray-200">
-                    <X size={14} className="text-gray-500" />
-                  </button>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

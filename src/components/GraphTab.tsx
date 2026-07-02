@@ -236,7 +236,66 @@ export default function GraphTab({ data, dateKey }: Props) {
     return count;
   }, [data, dateKey]);
 
-  const bodyfatData = points.map(p => ({ label: p.label, bodyfat: p.bodyfat }));
+  const bodyfatChartInfo = useMemo(() => {
+    const entries = Object.entries(data.logs)
+      .filter(([, log]) => log.body?.bodyfat != null)
+      .map(([dk, log]) => ({ dk, bodyfat: log.body!.bodyfat! }))
+      .sort((a, b) => a.dk.localeCompare(b.dk));
+
+    if (entries.length === 0) return { chartData: [], mode: 'raw' as const };
+
+    const first = new Date(entries[0].dk + 'T00:00:00');
+    const last  = new Date(dateKey + 'T00:00:00');
+    const spanDays = Math.round((last.getTime() - first.getTime()) / 86400000);
+
+    if (spanDays < 30) {
+      return {
+        chartData: entries.map(e => {
+          const d = new Date(e.dk + 'T00:00:00');
+          return { label: `${d.getMonth() + 1}/${d.getDate()}`, bodyfat: e.bodyfat };
+        }),
+        mode: 'raw' as const,
+      };
+    }
+
+    if (spanDays < 90) {
+      const byDk: Record<string, number> = {};
+      entries.forEach(e => { byDk[e.dk] = e.bodyfat; });
+      return {
+        chartData: entries.map(e => {
+          const d = new Date(e.dk + 'T00:00:00');
+          const ws: number[] = [];
+          for (let off = -3; off <= 3; off++) {
+            const od = new Date(d); od.setDate(d.getDate() + off);
+            const odk = dkFor(od);
+            if (byDk[odk] != null) ws.push(byDk[odk]);
+          }
+          const avg = ws.length > 0 ? ws.reduce((s, w) => s + w, 0) / ws.length : e.bodyfat;
+          return { label: `${d.getMonth() + 1}/${d.getDate()}`, bodyfat: Math.round(avg * 10) / 10 };
+        }),
+        mode: 'moving' as const,
+      };
+    }
+
+    const weekMap: Record<string, number[]> = {};
+    entries.forEach(e => {
+      const d = new Date(e.dk + 'T00:00:00');
+      const dow = d.getDay();
+      const diff = dow === 0 ? -6 : 1 - dow;
+      d.setDate(d.getDate() + diff);
+      const wk = dkFor(d);
+      if (!weekMap[wk]) weekMap[wk] = [];
+      weekMap[wk].push(e.bodyfat);
+    });
+    return {
+      chartData: Object.entries(weekMap).sort(([a], [b]) => a.localeCompare(b)).map(([wk, ws]) => {
+        const d = new Date(wk + 'T00:00:00');
+        return { label: `${d.getMonth() + 1}/${d.getDate()}`, bodyfat: Math.round(ws.reduce((s, w) => s + w, 0) / ws.length * 10) / 10 };
+      }),
+      mode: 'weekly' as const,
+    };
+  }, [data, dateKey]);
+
   const calData = points.map(p => ({ label: p.label, cal: p.netCal, isOver: p.isOver, eatingOut: p.eatingOut }));
 
   const { targetWeight, targetBodyfat } = data.settings;
@@ -307,9 +366,11 @@ export default function GraphTab({ data, dateKey }: Props) {
 
       {/* Bodyfat chart */}
       <div className="card">
-        <div className="text-sm font-semibold text-gray-700 mb-3">体脂肪率推移 (14日間)</div>
+        <div className="text-sm font-semibold text-gray-700 mb-3">
+          体脂肪率推移{bodyfatChartInfo.mode === 'moving' ? '（7日移動平均）' : bodyfatChartInfo.mode === 'weekly' ? '（週次平均）' : ''}
+        </div>
         <ResponsiveContainer width="100%" height={180}>
-          <AreaChart data={bodyfatData} margin={{ top: 5, right: 24, left: -20, bottom: 0 }}>
+          <AreaChart data={bodyfatChartInfo.chartData} margin={{ top: 5, right: 24, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="bfGrad" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.2} />
